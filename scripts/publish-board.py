@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Keep a new board in storage, if it says anything new, and point the head at it.
 
-    publish-board.py OWNER site/board.json
+    publish-board.py OWNER    # from where `pubkit board --out site` wrote site/board.json
 
 The owner's snapshots are in the private tenant release-<owner>, and its `board`
 head names the latest. A board differs from the last only if a fact or a grade
@@ -14,6 +14,7 @@ it prints no repository's name, since this repository's logs are public.
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -21,6 +22,8 @@ import urllib.request
 import uuid
 
 AUDIENCE = "storage.sustenaut.eu"
+BOARD = "site/board.json"
+OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 # What changes every time a board is read, and says nothing about the repositories.
 READING = {"built", "calls", "summary", "sources"}
 
@@ -100,11 +103,11 @@ class Storage:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("usage: publish-board.py OWNER BOARD.json", file=sys.stderr)
+    if len(argv) != 1 or not OWNER.fullmatch(argv[0]):
+        print("usage: publish-board.py OWNER", file=sys.stderr)
         return 2
-    owner, path = argv
-    with open(path, "rb") as file:
+    owner = argv[0]
+    with open(BOARD, "rb") as file:
         board = file.read()
     storage = Storage(os.environ.get("STORAGE_URL", f"https://{AUDIENCE}"), f"release-{owner.lower()}", oidc_token())
     try:

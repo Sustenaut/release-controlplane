@@ -48,5 +48,5 @@ jobs:
           GITHUB_TOKEN: '${{ steps.app.outputs.token }}'
           SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}'
       - name: Keep it in storage, if it changed
-        run: scripts/publish-board.py "$OWNER" site/board.json
+        run: scripts/publish-board.py "$OWNER"
         env: { OWNER: '${{ matrix.owner }}' }

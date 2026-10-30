@@ -45,6 +45,12 @@ Feature: The hourly board is kept in storage only when something changed
     And stderr mentions "storage said 403"
     And it uploaded 0 files to "release-sustenaut"
 
+  Scenario: An owner that isn't a name is refused before anything is sent
+    Given storage has no board for "release-sustenaut"
+    When I publish a board for an owner that isn't a name
+    Then the exit code is 2
+    And it uploaded 0 files to "release-sustenaut"
+
   Scenario: Nothing printed names a repository or the token
     Given storage has no board for "release-sustenaut"
     When I publish a board for "Sustenaut"

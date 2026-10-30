@@ -104,11 +104,11 @@ def storage(fake):
 
 
 def _publish(tmp_path, storage, owner, content):
-    path = tmp_path / "board.json"
-    path.write_bytes(content)
+    (tmp_path / "site").mkdir(exist_ok=True)
+    (tmp_path / "site" / "board.json").write_bytes(content)
     return subprocess.run(
-        [sys.executable, str(SCRIPTS / "publish-board.py"), owner, str(path)], capture_output=True, text=True,
-        check=False, timeout=30,
+        [sys.executable, str(SCRIPTS / "publish-board.py"), owner], capture_output=True, text=True,
+        check=False, timeout=30, cwd=tmp_path,
         env={"STORAGE_URL": storage, "ACTIONS_ID_TOKEN_REQUEST_URL": f"{storage}/oidc?x=1",
              "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request"})
 
@@ -136,6 +136,11 @@ def refuses(fake, status):
 @when(parsers.re(r'I publish a board for "(?P<owner>\w+)"$'), target_fixture="result")
 def publish(tmp_path, storage, owner):
     return _publish(tmp_path, storage, owner, board())
+
+
+@when("I publish a board for an owner that isn't a name", target_fixture="result")
+def publish_bad_owner(tmp_path, storage):
+    return _publish(tmp_path, storage, "../other", board())
 
 
 @when(parsers.parse('I publish a board for "{owner}" with the grade "{grade}", read later'),

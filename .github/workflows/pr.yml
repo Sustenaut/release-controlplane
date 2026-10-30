@@ -18,7 +18,7 @@ jobs:
   tests:
     name: ci
     uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
-    with: {"setup": "true", "test": "true"}
+    with: {"setup": "make venv", "test": "make functional"}
 
   # The one check a ruleset requires: it passes only when every job
   # above succeeded. None of them is ever skipped for not being asked for.

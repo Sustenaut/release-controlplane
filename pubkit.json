@@ -2,8 +2,8 @@
   "kind": "service",
   "ci": {
     "with": {
-      "setup": "true",
-      "test": "true",
+      "setup": "make venv",
+      "test": "make functional",
       "shellcheck": "with-secrets"
     }
   },

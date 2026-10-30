@@ -1,0 +1,16 @@
+{
+  "kind": "service",
+  "ci": {
+    "with": {
+      "setup": "make venv",
+      "test": "make functional",
+      "shellcheck": "with-secrets scripts/push-secrets.sh"
+    }
+  },
+  "protect": {
+    "checks": [
+      "ci / passed"
+    ],
+    "tags": false
+  }
+}

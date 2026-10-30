@@ -29,6 +29,7 @@ const BOARD = {
   ],
 };
 const STATE = { owner: "example-org", repos: { good: roles({ project: "tools", govern: true }), bad: roles({ protect: false }) } };
+const SHA = "a".repeat(40);
 
 function fakes(overrides = {}) {
   return {
@@ -37,6 +38,8 @@ function fakes(overrides = {}) {
     storage: { latest: async (o) => (o.name === "example-org" ? BOARD : null), log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
     github: {
       state: async () => STATE,
+      stateFile: async () => ({ state: STATE, sha: SHA }),
+      repositories: async () => ["bad", "good", "unlisted"],
       commits: async () => [
         { sha: "new", message: "Govern good", author: "David", time: "2026-10-30T11:00:00Z" },
         { sha: "old", message: "Seed", author: "David", time: "2026-10-30T09:00:00Z" },
@@ -107,8 +110,9 @@ test("the health check needs no sign-in, and tells nothing", async () => {
   assert.equal(text, "ok\n");
 });
 
-test("nothing but reading is accepted, and an unknown page is not found", async () => {
-  assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 405);
+test("only GET and POST are taken, and an unknown page is not found", async () => {
+  assert.equal((await get(handler(fakes()), "/", "me@example.org", "PUT")).status, 405);
+  assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 404);
   assert.equal((await get(handler(fakes()), "/nope")).status, 404);
 });
 
@@ -231,7 +235,7 @@ test("storage refusing is an error, not an empty board", async () => {
 test("the config needs everything, and reads the owners", () => {
   const env = { RELEASE_OWNERS: "A-org:1, b:22", TEAM: "ME@x.org, you@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
-  assert.deepEqual(config.owners[0], { name: "A-org", installation: "1", tenant: "release-a-org" });
+  assert.deepEqual(config.owners[0], { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
   assert.equal(config.owners[1].installation, "22");
   assert.deepEqual(config.team, ["me@x.org", "you@x.org"]);
   assert.equal(config.storageUrl, "https://storage.sustenaut.eu");
@@ -239,5 +243,5 @@ test("the config needs everything, and reads the owners", () => {
   for (const name of Object.keys(env)) {
     assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
   }
-  assert.throws(() => configFrom({ ...env, RELEASE_OWNERS: "A-org" }), /owner:installation-id/);
+  assert.throws(() => configFrom({ ...env, RELEASE_OWNERS: "A-org" }), /owner:reader-installation-id/);
 });

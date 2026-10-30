@@ -39,6 +39,13 @@ details>summary{cursor:pointer;list-style:none;display:inline-block}
 details>summary::-webkit-details-marker{display:none}
 details ul{margin:8px 0 0;padding:0 0 0 16px;font-size:13px;min-width:220px}
 .on{color:var(--accent);font-weight:600}.off{color:var(--muted)}
+.absent td{color:var(--muted)}
+input:not([type]),input[name=note]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);width:100%;min-width:90px}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+button{font:inherit;font-weight:600;padding:6px 14px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:var(--bg);cursor:pointer}
+form{display:flex;flex-direction:column;gap:10px}
+.actions{display:flex;gap:8px}
+td form{flex-direction:row}
 `;
 
 function page(title, active, who, body) {
@@ -100,24 +107,58 @@ export function boardPage(owners, who) {
 }
 
 const role = (on) => (on ? '<td class="on">on</td>' : '<td class="off">off</td>');
+const box = (name, key, on) => `<td><input type="checkbox" name="${escape(name)}.${key}" aria-label="${escape(name)} ${key}"${on ? " checked" : ""}></td>`;
 
-export function statePage(owners, who) {
-  const sections = owners.map(({ owner, result }) => {
+function readRow(name, r) {
+  return `<tr><td class="mono">${escape(name)}</td><td>${escape(r.project ?? "·")}</td>${role(r.board)}${role(r.protect)}${role(r.govern)}</tr>`;
+}
+
+function editRow(name, r) {
+  return `<tr${r ? "" : ' class="absent"'}><td class="mono">${escape(name)}<input type="hidden" name="repo" value="${escape(name)}"></td>
+<td><input name="${escape(name)}.project" aria-label="${escape(name)} project" value="${escape(r?.project ?? "")}"></td>
+${box(name, "board", r?.board)}${box(name, "protect", r?.protect)}${box(name, "govern", r?.govern)}</tr>`;
+}
+
+const HEAD = "<thead><tr><th>Repository</th><th>Project</th><th>Board</th><th>Protect</th><th>Govern</th></tr></thead>";
+
+export function statePage(owners, who, canEdit = false) {
+  const sections = owners.map(({ owner, result, visible }) => {
     if (result.error) return `<section><h2>${escape(owner.name)}</h2>${failed(result)}</section>`;
-    const rows = Object.entries(result.value.repos).sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, r]) => `<tr><td class="mono">${escape(name)}</td><td>${escape(r.project ?? "·")}</td>${role(r.board)}${role(r.protect)}${role(r.govern)}</tr>`)
-      .join("");
-    return `<section><h2>${escape(owner.name)}</h2><div class="wrap"><table>
-<thead><tr><th>Repository</th><th>Project</th><th>Board</th><th>Protect</th><th>Govern</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+    const { state, sha } = result.value;
+    const named = Object.keys(state.repos);
+    if (!canEdit || !owner.writerInstallation) {
+      const rows = named.sort((a, b) => a.localeCompare(b)).map((name) => readRow(name, state.repos[name])).join("");
+      return `<section><h2>${escape(owner.name)}</h2><div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div></section>`;
+    }
+    const others = visible.error ? [] : visible.value.filter((name) => !state.repos[name]);
+    const rows = [...named].sort((a, b) => a.localeCompare(b)).map((name) => editRow(name, state.repos[name]))
+      .concat(others.map((name) => editRow(name, null))).join("");
+    return `<section><h2>${escape(owner.name)}</h2>${visible.error ? failed(visible) : ""}
+<form method="post" action="/state/${escape(owner.name)}"><input type="hidden" name="base" value="${escape(sha)}">
+<div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div>
+<p class="actions"><input name="note" required maxlength="200" aria-label="Why" placeholder="Why this change?"> <button>Save</button></p>
+<p class="meta">A save opens a pull request on ${escape(owner.name)}/release-state that merges itself once its check passes. A repository in grey joins when a role is switched on.</p>
+</form></section>`;
   }).join("");
   return page("State", "State", who, `<h1>State</h1>${sections}`);
 }
 
-export function historyPage(owners, who) {
-  const sections = owners.map(({ owner, commits, log }) => {
+export function resultPage(who, title, message, url) {
+  const link = url ? `<p><a href="${escape(url)}">${escape(url)}</a></p>` : "";
+  return page(title, "State", who, `<h1>${escape(title)}</h1><p>${escape(message)}</p>${link}<p><a href="/state">Back to the state</a></p>`);
+}
+
+function revertCell(owner, commit, base) {
+  return `<td><form method="post" action="/state/${escape(owner.name)}/revert/${escape(commit.sha)}">
+<input type="hidden" name="base" value="${escape(base)}"><input name="note" required maxlength="200" aria-label="Why revert" placeholder="Why?"> <button>Revert</button></form></td>`;
+}
+
+export function historyPage(owners, who, canEdit = false) {
+  const sections = owners.map(({ owner, commits, log, result }) => {
+    const reverting = canEdit && owner.writerInstallation && result?.value;
     const changed = commits.error ? failed(commits) : `<div class="wrap"><table>
-<thead><tr><th>When</th><th>Who</th><th>Note</th><th>What changed</th></tr></thead><tbody>${commits.value.map((c) => `<tr>
-<td class="mono">${escape(c.time)}</td><td>${escape(c.author)}</td><td>${escape(c.message)}</td><td>${c.changes.map(escape).join("<br>") || "·"}</td></tr>`).join("")}</tbody></table></div>`;
+<thead><tr><th>When</th><th>Who</th><th>Note</th><th>What changed</th>${reverting ? "<th>Go back to this</th>" : ""}</tr></thead><tbody>${commits.value.map((c, i) => `<tr>
+<td class="mono">${escape(c.time)}</td><td>${escape(c.author)}</td><td>${escape(c.message)}</td><td>${c.changes.map(escape).join("<br>") || "·"}</td>${reverting ? (i === 0 ? "<td>·</td>" : revertCell(owner, c, result.value.sha)) : ""}</tr>`).join("")}</tbody></table></div>`;
     const timeline = log.error ? failed(log) : `<div class="wrap"><table>
 <thead><tr><th>When</th><th>Snapshot</th><th>By</th></tr></thead><tbody>${log.value.map((e) => `<tr>
 <td class="mono">${escape(e.time)}</td><td class="mono">${escape(String(e.hash).slice(0, 12))}</td><td class="mono">${escape(e.principal)}</td></tr>`).join("")}</tbody></table></div>`;

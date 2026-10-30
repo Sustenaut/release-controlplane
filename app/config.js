@@ -8,15 +8,20 @@ export function configFrom(env) {
     return env[name];
   };
   const owners = need("RELEASE_OWNERS").split(",").map((pair) => {
-    const [name, installation] = pair.trim().split(":");
-    if (!name || !/^\d+$/.test(installation ?? "")) {
-      throw new Error("RELEASE_OWNERS is a list of owner:installation-id, separated by commas");
+    const [name, installation, writerInstallation] = pair.trim().split(":");
+    if (!name || !/^\d+$/.test(installation ?? "") || (writerInstallation && !/^\d+$/.test(writerInstallation))) {
+      throw new Error("RELEASE_OWNERS is a list of owner:reader-installation-id[:writer-installation-id], separated by commas");
     }
-    return { name, installation, tenant: `release-${name.toLowerCase()}` };
+    return { name, installation, writerInstallation, tenant: `release-${name.toLowerCase()}` };
   });
+  const emails = (text) => text.split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
   return {
     owners,
-    team: need("TEAM").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean),
+    team: emails(need("TEAM")),
+    // Without these the app only reads.
+    operators: emails(env.OPERATORS ?? ""),
+    writerId: env.RELEASE_STATE_WRITER_APP_ID,
+    writerKey: env.RELEASE_STATE_WRITER_APP_KEY,
     appId: need("RELEASE_READER_APP_ID"),
     appKey: need("RELEASE_READER_APP_KEY"),
     storageUrl: (env.STORAGE_URL ?? "https://storage.sustenaut.eu").replace(/\/$/, ""),

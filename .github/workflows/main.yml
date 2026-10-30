@@ -13,7 +13,7 @@ jobs:
   # it ran are skipped, and nothing here tests less than the queue did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@1f61ab0da97be8f16c94e0de604ab183e6ac8f8e # v0.22.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -23,14 +23,14 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@1f61ab0da97be8f16c94e0de604ab183e6ac8f8e # v0.22.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
     with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@1f61ab0da97be8f16c94e0de604ab183e6ac8f8e # v0.22.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
     with: {"setup": "true", "test": "true"}
 
   # The one check a ruleset requires: it passes only when every job

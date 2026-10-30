@@ -1,0 +1,67 @@
+# Every night, for each owner: pubkit's nightly on what its state.json governs.
+# 02:41 UTC, an hour after pubkit's own schedule while the two run side by side,
+# since both keep the same one pull request in each repository.
+name: nightly
+
+on:
+  schedule: [{ cron: '41 2 * * *' }]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      Sustenaut: ${{ steps.plan.outputs.Sustenaut }}
+      schryer: ${{ steps.plan.outputs.schryer }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with: { persist-credentials: false }
+      - id: sustenaut
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: '${{ vars.RELEASE_READER_APP_ID }}'
+          private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
+          owner: Sustenaut
+      - id: schryer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: '${{ vars.RELEASE_READER_APP_ID }}'
+          private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
+          owner: schryer
+      - id: plan
+        run: |
+          governed() {
+            GH_TOKEN="$2" gh api -H 'Accept: application/vnd.github.raw+json' "repos/$1/release-state/contents/state.json" |
+              scripts/repos-from-state.py govern
+          }
+          echo "Sustenaut=$(governed Sustenaut "$SUSTENAUT_TOKEN")" >> "$GITHUB_OUTPUT"
+          echo "schryer=$(governed schryer "$SCHRYER_TOKEN")" >> "$GITHUB_OUTPUT"
+        env:
+          SUSTENAUT_TOKEN: '${{ steps.sustenaut.outputs.token }}'
+          SCHRYER_TOKEN: '${{ steps.schryer.outputs.token }}'
+
+  sustenaut:
+    needs: plan
+    if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
+    secrets:
+      app-id: '${{ vars.NIGHTLY_APP_ID }}'
+      app-key: '${{ secrets.NIGHTLY_APP_KEY }}'
+      notify-token: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
+      notify-user: '${{ secrets.SLACK_DM_USER_ID }}'
+
+  schryer:
+    needs: plan
+    if: needs.plan.outputs.schryer != '{"repositories":[]}'
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    with: { repos: '${{ needs.plan.outputs.schryer }}' }
+    secrets:
+      app-id: '${{ vars.NIGHTLY_APP_ID }}'
+      app-key: '${{ secrets.NIGHTLY_APP_KEY }}'
+      notify-token: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
+      notify-user: '${{ secrets.SLACK_DM_USER_ID }}'

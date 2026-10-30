@@ -23,6 +23,8 @@ import uuid
 
 AUDIENCE = "storage.sustenaut.eu"
 BOARD = "site/board.json"
+# Cloudflare refuses Python's default User-Agent (error 1010).
+AGENT = "sustenaut-release-controlplane"
 OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 # What changes every time a board is read, and says nothing about the repositories.
 READING = {"built", "calls", "summary", "sources"}
@@ -68,7 +70,7 @@ class Storage:
               headers: dict | None = None) -> tuple[int, bytes, dict]:
         request = urllib.request.Request(
             f"{self.base}/{self.tenant}{path}", data=data, method=method,
-            headers={"Authorization": f"Bearer {self.token}", **(headers or {})})
+            headers={"Authorization": f"Bearer {self.token}", "User-Agent": AGENT, **(headers or {})})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - our own service
                 return response.status, response.read(), dict(response.headers)

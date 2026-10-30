@@ -61,6 +61,8 @@ def _handler(fake):
                 fake.logins.append(self.path)
                 return self._send(200, json.dumps({"value": TOKEN}).encode())
             assert self.headers["Authorization"] == f"Bearer {TOKEN}"
+            if "Python" in self.headers["User-Agent"]:  # as Cloudflare refuses it
+                return self._send(403, b"error code: 1010")
             if fake.refuse_read:
                 return self._send(fake.refuse_read, b'{"error": "no"}')
             tenant = self.path.split("/")[1]

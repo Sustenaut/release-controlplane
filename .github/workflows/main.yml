@@ -24,14 +24,14 @@ jobs:
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
     uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@1f61ab0da97be8f16c94e0de604ab183e6ac8f8e # v0.22.0
-    with: {"shellcheck": "with-secrets scripts/push-secrets.sh"}
+    with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
     uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@1f61ab0da97be8f16c94e0de604ab183e6ac8f8e # v0.22.0
-    with: {"setup": "make venv", "test": "make functional"}
+    with: {"setup": "true", "test": "true"}
 
   # The one check a ruleset requires: it passes only when every job
   # above succeeded or, where the merge queue already passed the

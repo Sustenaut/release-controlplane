@@ -1,0 +1,131 @@
+// The pages, as plain HTML with no scripts. A grade's breakdown opens with the
+// browser's own <details>.
+
+const LETTERS = ["A", "B", "C", "D", "E"];
+const CATEGORIES = [["quality", "Quality"], ["security", "Security"], ["delivery", "Delivery"]];
+
+export function escape(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+const STYLE = `
+:root{color-scheme:light dark;--bg:#f6f7f5;--surface:#fff;--fg:#1b2420;--muted:#5b6862;--line:#dde3df;--accent:#1f6b5c;
+--gA:#2e9e4f;--gB:#8cc63f;--gC:#e6c229;--gD:#f08c2e;--gE:#d9473b;--ink:#1b2420}
+@media (prefers-color-scheme:dark){:root{--bg:#121816;--surface:#1a2220;--fg:#e4ebe7;--muted:#9aa8a1;--line:#2c3632;--accent:#6cc4ae}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:20px}
+nav{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+nav b{font-size:18px}
+a{color:var(--accent)}
+a[aria-current]{font-weight:600;text-decoration:none;color:var(--fg)}
+h1{margin:0;font-size:24px}
+h2{margin:0;font-size:18px}
+h3{margin:0;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+section{display:flex;flex-direction:column;gap:12px}
+p{margin:0}
+.who,.meta,.tag{color:var(--muted);font-size:13px}
+.who{margin-left:auto}
+.problem{color:var(--gE)}
+.wrap{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+tbody tr:last-child>td{border-bottom:0}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.dot{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;font:600 12px/1 ui-monospace,Menlo,monospace;color:#fff}
+.A{background:var(--gA)}.E{background:var(--gE)}.B{background:var(--gB);color:var(--ink)}.C{background:var(--gC);color:var(--ink)}.D{background:var(--gD);color:var(--ink)}
+details>summary{cursor:pointer;list-style:none;display:inline-block}
+details>summary::-webkit-details-marker{display:none}
+details ul{margin:8px 0 0;padding:0 0 0 16px;font-size:13px;min-width:220px}
+.on{color:var(--accent);font-weight:600}.off{color:var(--muted)}
+`;
+
+function page(title, active, who, body) {
+  const links = [["/", "Board"], ["/state", "State"], ["/history", "History"]]
+    .map(([href, label]) => `<a href="${href}"${label === active ? ' aria-current="page"' : ""}>${label}</a>`)
+    .join("");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escape(title)} · Release control plane</title><style>${STYLE}</style></head>
+<body><main><nav><b>Release control plane</b>${links}<span class="who">${escape(who)}</span></nav>${body}</main></body></html>
+`;
+}
+
+const dot = (letter) => `<span class="dot ${escape(letter)}">${escape(letter)}</span>`;
+
+function grade(name, found) {
+  if (!found) return "<td>·</td>";
+  const steps = [found.start, ...(found.steps ?? [])].filter(Boolean)
+    .map((step) => `<li>${escape(step.text)}</li>`).join("");
+  return `<td><details><summary aria-label="${name} ${escape(found.letter)}">${dot(found.letter)}</summary><ul>${steps}</ul></details></td>`;
+}
+
+function boardRow(row) {
+  const grades = CATEGORIES.map(([key, label]) => grade(label, row.grades?.[key])).join("");
+  const privately = row.visibility === "private" ? ' <span class="tag">private</span>' : "";
+  return `<tr><td class="mono">${escape(row.repo)}${privately} <span class="tag">${escape(row.kind)}</span></td>
+<td>${dot(row.overall)}</td><td class="mono">${escape(row.released)}</td><td class="mono">${escape(row.pubkit)}</td>${grades}</tr>`;
+}
+
+const worstFirst = (a, b) => LETTERS.indexOf(b.overall) - LETTERS.indexOf(a.overall) || a.repo.localeCompare(b.repo);
+
+function byProject(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const project = row.project ?? "No project";
+    groups.set(project, [...(groups.get(project) ?? []), row]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+const failed = (result) => `<p class="problem">Couldn't read this: ${escape(result.error)}</p>`;
+
+export function boardPage(owners, who) {
+  const sections = owners.map(({ owner, result }) => {
+    let body;
+    if (result.error) body = failed(result);
+    else if (!result.value) body = '<p class="meta">No board yet. The hourly run makes the first.</p>';
+    else {
+      const board = result.value;
+      const problems = (board.problems ?? []).map((p) => `<p class="problem">${escape(p)}</p>`).join("");
+      const groups = byProject(board.repos ?? []).map(([project, rows]) => `<h3>${escape(project)}</h3><div class="wrap"><table>
+<thead><tr><th>Repository</th><th>Overall</th><th>Released</th><th>pubkit</th><th>Quality</th><th>Security</th><th>Delivery</th></tr></thead>
+<tbody>${[...rows].sort(worstFirst).map(boardRow).join("")}</tbody></table></div>`).join("");
+      body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
+    }
+    return `<section><h2>${escape(owner.name)}</h2>${body}</section>`;
+  }).join("");
+  return page("Board", "Board", who, `<h1>Board</h1>${sections}`);
+}
+
+const role = (on) => (on ? '<td class="on">on</td>' : '<td class="off">off</td>');
+
+export function statePage(owners, who) {
+  const sections = owners.map(({ owner, result }) => {
+    if (result.error) return `<section><h2>${escape(owner.name)}</h2>${failed(result)}</section>`;
+    const rows = Object.entries(result.value.repos).sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, r]) => `<tr><td class="mono">${escape(name)}</td><td>${escape(r.project ?? "·")}</td>${role(r.board)}${role(r.protect)}${role(r.govern)}</tr>`)
+      .join("");
+    return `<section><h2>${escape(owner.name)}</h2><div class="wrap"><table>
+<thead><tr><th>Repository</th><th>Project</th><th>Board</th><th>Protect</th><th>Govern</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  }).join("");
+  return page("State", "State", who, `<h1>State</h1>${sections}`);
+}
+
+export function historyPage(owners, who) {
+  const sections = owners.map(({ owner, commits, log }) => {
+    const changed = commits.error ? failed(commits) : `<div class="wrap"><table>
+<thead><tr><th>When</th><th>Who</th><th>Note</th><th>What changed</th></tr></thead><tbody>${commits.value.map((c) => `<tr>
+<td class="mono">${escape(c.time)}</td><td>${escape(c.author)}</td><td>${escape(c.message)}</td><td>${c.changes.map(escape).join("<br>") || "·"}</td></tr>`).join("")}</tbody></table></div>`;
+    const timeline = log.error ? failed(log) : `<div class="wrap"><table>
+<thead><tr><th>When</th><th>Snapshot</th><th>By</th></tr></thead><tbody>${log.value.map((e) => `<tr>
+<td class="mono">${escape(e.time)}</td><td class="mono">${escape(String(e.hash).slice(0, 12))}</td><td class="mono">${escape(e.principal)}</td></tr>`).join("")}</tbody></table></div>`;
+    return `<section><h2>${escape(owner.name)}</h2><h3>State changes</h3>${changed}<h3>Board snapshots</h3>${timeline}</section>`;
+  }).join("");
+  return page("History", "History", who, `<h1>History</h1>${sections}`);
+}
+
+export function refusedPage(who) {
+  return page("Not on the team", "", who, "<h1>Not on the team</h1><p>This address isn't on the team's list.</p>");
+}

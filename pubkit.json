@@ -2,7 +2,7 @@
   "kind": "service",
   "ci": {
     "with": {
-      "setup": "make venv",
+      "setup": "make venv node",
       "test": "make functional",
       "shellcheck": "with-secrets"
     }

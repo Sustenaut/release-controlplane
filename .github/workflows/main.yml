@@ -31,7 +31,7 @@ jobs:
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
     uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
-    with: {"setup": "make venv", "test": "make functional"}
+    with: {"setup": "make venv node", "test": "make functional"}
 
   # The one check a ruleset requires: it passes only when every job
   # above succeeded or, where the merge queue already passed the

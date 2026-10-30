@@ -1,0 +1,18 @@
+# The release control plane's app on the Sustenaut k3s server (business-plan's
+# infra/hetzner.tf), namespace release: the app, oauth2-proxy in front of it, and the
+# ingress for release.sustenaut.eu. Rendered by .github/workflows/deploy.yml with the
+# image it just built, and applied by sustenaut-deploy on the server.
+# Not here: the Secret release-secrets and the network policy in admin/ (the deploy
+# identity may not manage those), which push-secrets.sh puts in; and the Secret
+# release-oidc (the sign-in client), which register-client.sh puts in.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: release
+resources:
+  - service-accounts.yaml
+  - app.yaml
+  - oauth2-proxy.yaml
+  - ingress.yaml
+images:
+  - name: ghcr.io/sustenaut/sustenaut-release
+    newTag: unset

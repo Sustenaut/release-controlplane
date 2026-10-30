@@ -144,9 +144,9 @@ def publish_later(tmp_path, storage, owner, grade):
     return _publish(tmp_path, storage, owner, board(grade, "2026-10-30T11:00:00Z"))
 
 
-@then(parsers.parse('it uploaded {count:d} {_files} to "{tenant}"'))
-def uploaded(fake, count, _files, tenant):
-    assert len([u for u in fake.uploads if u[0] == tenant]) == count
+@then(parsers.re(r'it uploaded (?P<count>\d+) files? to "(?P<tenant>[^"]+)"'))
+def uploaded(fake, count, tenant):
+    assert len([u for u in fake.uploads if u[0] == tenant]) == int(count)
 
 
 @then('the head moved with "If-None-Match: *"')

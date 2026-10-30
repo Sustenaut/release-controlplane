@@ -80,7 +80,7 @@ export function handler({ owners, team, github, storage }) {
       });
       response.end(body);
     };
-    const path = new URL(request.url, "http://app").pathname;
+    const path = request.url.split("?")[0];
     if (path === "/healthz") return send(200, "ok\n", "text/plain");
 
     const who = String(request.headers["x-forwarded-email"] ?? "").trim().toLowerCase();

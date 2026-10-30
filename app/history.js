@@ -7,7 +7,7 @@ export function changes(before, after) {
   const was = before?.repos ?? {};
   const now = after?.repos ?? {};
   const out = [];
-  for (const name of Object.keys({ ...was, ...now }).sort()) {
+  for (const name of Object.keys({ ...was, ...now }).sort((a, b) => a.localeCompare(b))) {
     if (!was[name]) out.push(`${name} added`);
     else if (!now[name]) out.push(`${name} removed`);
     else {

@@ -13,7 +13,7 @@ jobs:
   # it ran are skipped, and nothing here tests less than the queue did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -23,14 +23,14 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
     with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
     with: {"setup": "make venv", "test": "make functional"}
 
   # The one check a ruleset requires: it passes only when every job

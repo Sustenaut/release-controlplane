@@ -47,7 +47,7 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
@@ -58,7 +58,7 @@ jobs:
   schryer:
     needs: plan
     if: needs.plan.outputs.schryer != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@5dd7f8852f9335ada2998e230a6ac8b41a9f2e23 # v0.23.0
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
     with: { repos: '${{ needs.plan.outputs.schryer }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'

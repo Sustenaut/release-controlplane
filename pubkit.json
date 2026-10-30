@@ -26,5 +26,27 @@
       "from": "github-release-reader-key",
       "to": "RELEASE_READER_APP_KEY"
     }
-  }
+  },
+  "secrets": [
+    {
+      "from": "sustenaut-nightly-app-id",
+      "to": "NIGHTLY_APP_ID",
+      "kind": "variable"
+    },
+    {
+      "from": "sustenaut-nightly-app-key",
+      "to": "NIGHTLY_APP_KEY",
+      "kind": "secret"
+    },
+    {
+      "from": "slack-bot-token",
+      "to": "SUSTENAUT_SLACK_BOT_TOKEN",
+      "kind": "secret"
+    },
+    {
+      "from": "slack-dm-user-id",
+      "to": "SLACK_DM_USER_ID",
+      "kind": "secret"
+    }
+  ]
 }

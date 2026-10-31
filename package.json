@@ -13,6 +13,6 @@
     "test": "node --test app/test/*.test.js"
   },
   "dependencies": {
-    "pubpr": "github:Sustenaut/pubpr#claude/auto-merge-and-expect"
+    "pubpr": "github:Sustenaut/pubpr#v0.1.1"
   }
 }

@@ -19,6 +19,8 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
+        "app/config.js",
+        "app/test/**",
         "pubkit.json"
       ]
     },

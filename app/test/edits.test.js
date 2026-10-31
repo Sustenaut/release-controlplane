@@ -26,7 +26,7 @@ function app(overrides = {}) {
   const answers = { status: "opened", url: "https://github.com/x/pull/1", autoMerge: "on", ...overrides.answer };
   let reads = 0;
   const handle = handler({
-    owners: [OWNER, READ_ONLY],
+    owner: overrides.owner ?? OWNER,
     team: ["op@x.org", "reader@x.org"],
     operators: ["op@x.org"],
     storage: { latest: async () => null, log: async () => [] },
@@ -62,7 +62,7 @@ const post = (handle, path, options) => call(handle, path, { method: "POST", ...
 
 test("an operator's state page is a form, with the repositories not in the state in grey", async () => {
   const { text } = await call(app().handle, "/state");
-  assert.match(text, /<form method="post" action="\/state\/example-org">/);
+  assert.match(text, /<form method="post" action="\/state">/);
   assert.ok(text.includes(`name="base" value="${SHA}"`));
   assert.match(text, /name="good.govern"/);
   assert.match(text, /class="absent"[^]*unlisted/);
@@ -73,14 +73,13 @@ test("someone not an operator sees no form, and an owner with no writer has none
   const { text } = await call(app().handle, "/state", { email: "reader@x.org" });
   assert.ok(!text.includes("<form"));
   assert.ok(!text.includes("unlisted"));
-  const op = await call(app().handle, "/state");
-  assert.equal(op.text.match(/<form/g).length, 1, "only the owner with a writer");
+  assert.ok(!(await call(app({ owner: READ_ONLY }).handle, "/state")).text.includes("<form"));
   assert.ok(!(await call(app({ noSave: true }).handle, "/state")).text.includes("<form"));
 });
 
 test("a save opens a pull request with the new state, the note and who asked", async () => {
   const { handle, saved } = app();
-  const { status, text } = await post(handle, "/state/example-org", { body: SAVE });
+  const { status, text } = await post(handle, "/state", { body: SAVE });
   assert.equal(status, 200);
   assert.match(text, /merges by itself/);
   assert.match(text, /github.com\/x\/pull\/1/);
@@ -99,7 +98,7 @@ test("what GitHub answered is said plainly", async () => {
     [{ autoMerge: "merged" }, 200, /It has merged/],
     [{ autoMerge: "not allowed" }, 200, /GitHub said: not allowed/],
   ]) {
-    const result = await post(app({ answer }).handle, "/state/example-org", { body: SAVE });
+    const result = await post(app({ answer }).handle, "/state", { body: SAVE });
     assert.equal(result.status, status);
     assert.match(result.text, words);
   }
@@ -107,20 +106,20 @@ test("what GitHub answered is said plainly", async () => {
 
 test("only an operator may save, and only from this site", async () => {
   const { handle, saved } = app();
-  assert.equal((await post(handle, "/state/example-org", { email: "reader@x.org", body: SAVE })).status, 403);
-  assert.equal((await post(handle, "/state/example-org", { email: "stranger@x.org", body: SAVE })).status, 403);
-  assert.equal((await post(handle, "/state/example-org", { origin: "https://evil.example", body: SAVE })).status, 403);
-  assert.equal((await post(handle, "/state/example-org", { origin: null, body: SAVE })).status, 403);
-  assert.equal((await post(handle, "/state/someone", { body: SAVE })).status, 403, "no writer for this owner");
-  assert.equal((await post(handle, "/state/nobody", { body: SAVE })).status, 404);
-  assert.equal((await post(app({ noSave: true }).handle, "/state/example-org", { body: SAVE })).status, 403);
+  assert.equal((await post(handle, "/state", { email: "reader@x.org", body: SAVE })).status, 403);
+  assert.equal((await post(handle, "/state", { email: "stranger@x.org", body: SAVE })).status, 403);
+  assert.equal((await post(handle, "/state", { origin: "https://evil.example", body: SAVE })).status, 403);
+  assert.equal((await post(handle, "/state", { origin: null, body: SAVE })).status, 403);
+  assert.equal((await post(app({ owner: READ_ONLY }).handle, "/state", { body: SAVE })).status, 403, "no writer for this owner");
+  assert.equal((await post(handle, "/other", { body: SAVE })).status, 404);
+  assert.equal((await post(app({ noSave: true }).handle, "/state", { body: SAVE })).status, 403);
   assert.deepEqual(saved, []);
 });
 
 test("a bad form says why, and saves nothing", async () => {
   const { handle, saved } = app();
   const bad = async (fields, words) => {
-    const { status, text } = await post(handle, "/state/example-org", { body: form(fields) });
+    const { status, text } = await post(handle, "/state", { body: form(fields) });
     assert.equal(status, 400);
     assert.match(text, words);
   };
@@ -140,7 +139,7 @@ test("a form too large is refused", async () => {
   await new Promise((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const answered = await fetch(`${base}/state/example-org`, {
+    const answered = await fetch(`${base}/state`, {
       method: "POST", headers: { "X-Forwarded-Email": "op@x.org", Origin: base }, body: "x".repeat(300 * 1024),
     }).then((r) => r.status, () => "closed");
     assert.ok(answered === 400 || answered === "closed");
@@ -153,11 +152,11 @@ test("a form too large is refused", async () => {
 
 test("a failure saving is said, not thrown", async () => {
   const handle = handler({
-    owners: [OWNER], team: ["op@x.org"], operators: ["op@x.org"], storage: {},
+    owner: OWNER, team: ["op@x.org"], operators: ["op@x.org"], storage: {},
     github: { stateFile: async () => ({ state: STATE, sha: SHA }), repositories: async () => ["good", "bad"] },
     save: { save: async () => { throw new Error("GitHub said 500"); } },
   });
-  const { status, text } = await post(handle, "/state/example-org", { body: SAVE });
+  const { status, text } = await post(handle, "/state", { body: SAVE });
   assert.equal(status, 502);
   assert.match(text, /GitHub said 500/);
 });
@@ -166,7 +165,7 @@ test("a save reads the state afresh, and doesn't show the old one after", async 
   const { handle, reads } = app();
   await call(handle, "/state");
   const before = reads();
-  await post(handle, "/state/example-org", { body: SAVE });
+  await post(handle, "/state", { body: SAVE });
   assert.equal(reads(), before + 1);
   await call(handle, "/state");
   assert.equal(reads(), before + 2);
@@ -175,11 +174,11 @@ test("a save reads the state afresh, and doesn't show the old one after", async 
 test("history offers going back to any but the newest, and reverting saves the old file", async () => {
   const { handle, saved } = app();
   const page = await call(handle, "/history");
-  assert.ok(page.text.includes(`/state/example-org/revert/${COMMIT}`));
+  assert.ok(page.text.includes(`/state/revert/${COMMIT}`));
   assert.ok(!page.text.includes(`/revert/${"d".repeat(40)}`));
   const reader_ = await call(handle, "/history", { email: "reader@x.org" });
   assert.ok(!reader_.text.includes("revert"));
-  const { status } = await post(handle, `/state/example-org/revert/${COMMIT}`, { body: form([["base", SHA], ["note", "Undo it"]]) });
+  const { status } = await post(handle, `/state/revert/${COMMIT}`, { body: form([["base", SHA], ["note", "Undo it"]]) });
   assert.equal(status, 200);
   assert.deepEqual(saved[0].state, OLD);
   assert.equal(saved[0].note, "Undo it");
@@ -252,12 +251,12 @@ test("the reader reads the file with its sha, and lists every page of repositori
 });
 
 test("the config takes a writer installation, and operators", () => {
-  const env = { RELEASE_OWNERS: "a:1:2,b:3", TEAM: "t@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", OPERATORS: "OP@x.org", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
+  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", TEAM: "t@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", OPERATORS: "OP@x.org", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
   const config = configFrom(env);
-  assert.equal(config.owners[0].writerInstallation, "2");
-  assert.equal(config.owners[1].writerInstallation, undefined);
+  assert.equal(config.owner.writerInstallation, "2");
   assert.deepEqual(config.operators, ["op@x.org"]);
   assert.equal(config.writerId, "8");
   assert.deepEqual(configFrom({ ...env, OPERATORS: undefined }).operators, []);
-  assert.throws(() => configFrom({ ...env, RELEASE_OWNERS: "a:1:x" }), /writer-installation-id/);
+  assert.equal(configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: undefined }).owner.writerInstallation, undefined);
+  assert.throws(() => configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: "x" }), /must be a number/);
 });

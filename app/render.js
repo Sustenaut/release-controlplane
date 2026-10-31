@@ -48,14 +48,14 @@ form{display:flex;flex-direction:column;gap:10px}
 td form{flex-direction:row}
 `;
 
-function page(title, active, who, body) {
+function page(title, active, who, body, owner) {
   const links = [["/", "Board"], ["/state", "State"], ["/history", "History"]]
     .map(([href, label]) => `<a href="${href}"${label === active ? ' aria-current="page"' : ""}>${label}</a>`)
     .join("");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escape(title)} · Release control plane</title><style>${STYLE}</style></head>
-<body><main><nav><b>Release control plane</b>${links}<span class="who">${escape(who)}</span></nav>${body}</main></body></html>
+<title>${escape(title)} · ${escape(owner.name)} · Release control plane</title><style>${STYLE}</style></head>
+<body><main><nav><b>${escape(owner.name)} releases</b>${links}<span class="who">${escape(who)}</span></nav>${body}</main></body></html>
 `;
 }
 
@@ -88,22 +88,19 @@ function byProject(rows) {
 
 const failed = (result) => `<p class="problem">Couldn't read this: ${escape(result.error)}</p>`;
 
-export function boardPage(owners, who) {
-  const sections = owners.map(({ owner, result }) => {
-    let body;
-    if (result.error) body = failed(result);
-    else if (!result.value) body = '<p class="meta">No board yet. The hourly run makes the first.</p>';
-    else {
-      const board = result.value;
-      const problems = (board.problems ?? []).map((p) => `<p class="problem">${escape(p)}</p>`).join("");
-      const groups = byProject(board.repos ?? []).map(([project, rows]) => `<h3>${escape(project)}</h3><div class="wrap"><table>
+export function boardPage({ owner, result }, who) {
+  let body;
+  if (result.error) body = failed(result);
+  else if (!result.value) body = '<p class="meta">No board yet. The hourly run makes the first.</p>';
+  else {
+    const board = result.value;
+    const problems = (board.problems ?? []).map((p) => `<p class="problem">${escape(p)}</p>`).join("");
+    const groups = byProject(board.repos ?? []).map(([project, rows]) => `<h3>${escape(project)}</h3><div class="wrap"><table>
 <thead><tr><th>Repository</th><th>Overall</th><th>Released</th><th>pubkit</th><th>Quality</th><th>Security</th><th>Delivery</th></tr></thead>
 <tbody>${[...rows].sort(worstFirst).map(boardRow).join("")}</tbody></table></div>`).join("");
-      body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
-    }
-    return `<section><h2>${escape(owner.name)}</h2>${body}</section>`;
-  }).join("");
-  return page("Board", "Board", who, `<h1>Board</h1>${sections}`);
+    body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
+  }
+  return page("Board", "Board", who, `<h1>Board</h1><section>${body}</section>`, owner);
 }
 
 const role = (on) => (on ? '<td class="on">on</td>' : '<td class="off">off</td>');
@@ -121,52 +118,53 @@ ${box(name, "board", r?.board)}${box(name, "protect", r?.protect)}${box(name, "g
 
 const HEAD = "<thead><tr><th>Repository</th><th>Project</th><th>Board</th><th>Protect</th><th>Govern</th></tr></thead>";
 
-export function statePage(owners, who, canEdit = false) {
-  const sections = owners.map(({ owner, result, visible }) => {
-    if (result.error) return `<section><h2>${escape(owner.name)}</h2>${failed(result)}</section>`;
-    const { state, sha } = result.value;
-    const named = Object.keys(state.repos);
-    if (!canEdit || !owner.writerInstallation) {
-      const rows = named.sort((a, b) => a.localeCompare(b)).map((name) => readRow(name, state.repos[name])).join("");
-      return `<section><h2>${escape(owner.name)}</h2><div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div></section>`;
-    }
-    const others = visible.error ? [] : visible.value.filter((name) => !state.repos[name]);
-    const rows = [...named].sort((a, b) => a.localeCompare(b)).map((name) => editRow(name, state.repos[name]))
-      .concat(others.map((name) => editRow(name, null))).join("");
-    return `<section><h2>${escape(owner.name)}</h2>${visible.error ? failed(visible) : ""}
-<form method="post" action="/state/${escape(owner.name)}"><input type="hidden" name="base" value="${escape(sha)}">
+function stateBody({ owner, result, visible }, canEdit) {
+  if (result.error) return failed(result);
+  const { state, sha } = result.value;
+  const named = Object.keys(state.repos);
+  if (!canEdit || !owner.writerInstallation) {
+    const rows = named.sort((a, b) => a.localeCompare(b)).map((name) => readRow(name, state.repos[name])).join("");
+    return `<div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div>`;
+  }
+  const others = visible.error ? [] : visible.value.filter((name) => !state.repos[name]);
+  const rows = [...named].sort((a, b) => a.localeCompare(b)).map((name) => editRow(name, state.repos[name]))
+    .concat(others.map((name) => editRow(name, null))).join("");
+  return `${visible.error ? failed(visible) : ""}
+<form method="post" action="/state"><input type="hidden" name="base" value="${escape(sha)}">
 <div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div>
 <p class="actions"><input name="note" required maxlength="200" aria-label="Why" placeholder="Why this change?"> <button>Save</button></p>
 <p class="meta">A save opens a pull request on ${escape(owner.name)}/release-state that merges itself once its check passes. A repository in grey joins when a role is switched on.</p>
-</form></section>`;
-  }).join("");
-  return page("State", "State", who, `<h1>State</h1>${sections}`);
+</form>`;
 }
 
-export function resultPage(who, title, message, url) {
+export function statePage(read, who, canEdit = false) {
+  return page("State", "State", who, `<h1>State</h1><section>${stateBody(read, canEdit)}</section>`, read.owner);
+}
+
+export function resultPage(who, title, message, url, owner) {
   const link = url ? `<p><a href="${escape(url)}">${escape(url)}</a></p>` : "";
-  return page(title, "State", who, `<h1>${escape(title)}</h1><p>${escape(message)}</p>${link}<p><a href="/state">Back to the state</a></p>`);
+  const back = '<p><a href="/state">Back to the state</a></p>';
+  return page(title, "State", who, `<h1>${escape(title)}</h1><p>${escape(message)}</p>${link}${back}`, owner);
 }
 
-function revertCell(owner, commit, base) {
-  return `<td><form method="post" action="/state/${escape(owner.name)}/revert/${escape(commit.sha)}">
+function revertCell(commit, base) {
+  return `<td><form method="post" action="/state/revert/${escape(commit.sha)}">
 <input type="hidden" name="base" value="${escape(base)}"><input name="note" required maxlength="200" aria-label="Why revert" placeholder="Why?"> <button>Revert</button></form></td>`;
 }
 
-export function historyPage(owners, who, canEdit = false) {
-  const sections = owners.map(({ owner, commits, log, result }) => {
+export function historyPage({ owner, commits, log, result }, who, canEdit = false) {
+  {
     const reverting = canEdit && owner.writerInstallation && result?.value;
     const changed = commits.error ? failed(commits) : `<div class="wrap"><table>
 <thead><tr><th>When</th><th>Who</th><th>Note</th><th>What changed</th>${reverting ? "<th>Go back to this</th>" : ""}</tr></thead><tbody>${commits.value.map((c, i) => `<tr>
-<td class="mono">${escape(c.time)}</td><td>${escape(c.author)}</td><td>${escape(c.message)}</td><td>${c.changes.map(escape).join("<br>") || "·"}</td>${reverting ? (i === 0 ? "<td>·</td>" : revertCell(owner, c, result.value.sha)) : ""}</tr>`).join("")}</tbody></table></div>`;
+<td class="mono">${escape(c.time)}</td><td>${escape(c.author)}</td><td>${escape(c.message)}</td><td>${c.changes.map(escape).join("<br>") || "·"}</td>${reverting ? (i === 0 ? "<td>·</td>" : revertCell(c, result.value.sha)) : ""}</tr>`).join("")}</tbody></table></div>`;
     const timeline = log.error ? failed(log) : `<div class="wrap"><table>
 <thead><tr><th>When</th><th>Snapshot</th><th>By</th></tr></thead><tbody>${log.value.map((e) => `<tr>
 <td class="mono">${escape(e.time)}</td><td class="mono">${escape(String(e.hash).slice(0, 12))}</td><td class="mono">${escape(e.principal)}</td></tr>`).join("")}</tbody></table></div>`;
-    return `<section><h2>${escape(owner.name)}</h2><h3>State changes</h3>${changed}<h3>Board snapshots</h3>${timeline}</section>`;
-  }).join("");
-  return page("History", "History", who, `<h1>History</h1>${sections}`);
+    return page("History", "History", who, `<h1>History</h1><section><h3>State changes</h3>${changed}<h3>Board snapshots</h3>${timeline}</section>`, owner);
+  }
 }
 
-export function refusedPage(who) {
-  return page("Not on the team", "", who, "<h1>Not on the team</h1><p>This address isn't on the team's list.</p>");
+export function refusedPage(who, owner) {
+  return page("Not on the list", "", who, "<h1>Not on the list</h1><p>This address can't see anything here.</p>", owner);
 }

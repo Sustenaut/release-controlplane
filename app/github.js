@@ -16,21 +16,27 @@ export function appJwt(appId, key, now = Date.now()) {
   return `${body}.${createSign("RSA-SHA256").update(body).sign(key, "base64url")}`;
 }
 
-export function reader({ appId, appKey }, { fetch, now = Date.now } = {}) {
+// A function from an owner to a token for its installation, each kept until shortly
+// before it expires.
+export function installationTokens({ appId, appKey, installationOf, permissions, fetch, now = Date.now }) {
   const tokens = new Map();
-
-  async function tokenFor(owner) {
+  return async (owner) => {
     const held = tokens.get(owner.name);
     if (held && held.expires - now() > 60_000) return held.token;
     const api = github({ token: appJwt(appId, appKey, now()), fetch });
-    const made = await api(`/app/installations/${owner.installation}/access_tokens`, {
+    const made = await api(`/app/installations/${installationOf(owner)}/access_tokens`, {
       method: "POST",
-      body: { permissions: { contents: "read" } },
+      body: { permissions },
     });
     tokens.set(owner.name, { token: made.token, expires: Date.parse(made.expires_at) });
     return made.token;
-  }
+  };
+}
 
+export function reader({ appId, appKey }, { fetch, now = Date.now } = {}) {
+  const tokenFor = installationTokens({
+    appId, appKey, fetch, now, installationOf: (owner) => owner.installation, permissions: { contents: "read" },
+  });
   const forOwner = (owner) => github({ token: () => tokenFor(owner), fetch });
   const at = (owner) => `/repos/${owner.name}/release-state`;
 
@@ -39,6 +45,21 @@ export function reader({ appId, appKey }, { fetch, now = Date.now } = {}) {
     async state(owner, ref = "main") {
       const text = await forOwner(owner)(`${at(owner)}/contents/${STATE_FILE}?ref=${ref}`, { raw: true });
       return JSON.parse(text);
+    },
+    // The state file on main, with its blob sha, which a save says it was read at.
+    async stateFile(owner) {
+      const found = await forOwner(owner)(`${at(owner)}/contents/${STATE_FILE}?ref=main`);
+      return { state: JSON.parse(Buffer.from(found.content, "base64").toString("utf8")), sha: found.sha };
+    },
+    // The names of the owner's repositories this app can see.
+    async repositories(owner) {
+      const names = [];
+      for (let page = 1; page <= 10; page++) {
+        const found = await forOwner(owner)(`/installation/repositories?per_page=100&page=${page}`);
+        names.push(...found.repositories.map((r) => r.name));
+        if (found.repositories.length < 100) break;
+      }
+      return names.sort((a, b) => a.localeCompare(b));
     },
     // The commits that changed the state file, newest first.
     async commits(owner, count = 20) {

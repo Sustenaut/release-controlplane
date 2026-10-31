@@ -22,6 +22,7 @@
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
         "app/config.js",
+        "app/test/**",
         "pubkit.json"
       ],
       "mode": "required"
@@ -53,10 +54,6 @@
   "exclude": [
     {
       "path": "tests/**",
-      "reason": "Fakes and test data"
-    },
-    {
-      "path": "app/test/**",
       "reason": "Fakes and test data"
     }
   ],

@@ -13,10 +13,7 @@ import { escape } from "../render.js";
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
 });
-const OWNERS = [
-  { name: "example-org", installation: "11", tenant: "release-example-org" },
-  { name: "someone", installation: "22", tenant: "release-someone" },
-];
+const OWNER = { name: "example-org", installation: "11", tenant: "release-example-org" };
 const roles = (o) => ({ board: true, protect: true, govern: false, ...o });
 const BOARD = {
   summary: "2 repos: 1 A, 1 D.",
@@ -29,14 +26,17 @@ const BOARD = {
   ],
 };
 const STATE = { owner: "example-org", repos: { good: roles({ project: "tools", govern: true }), bad: roles({ protect: false }) } };
+const SHA = "a".repeat(40);
 
 function fakes(overrides = {}) {
   return {
-    owners: OWNERS,
+    owner: OWNER,
     team: ["me@example.org"],
-    storage: { latest: async (o) => (o.name === "example-org" ? BOARD : null), log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
+    storage: { latest: async () => BOARD, log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
     github: {
       state: async () => STATE,
+      stateFile: async () => ({ state: STATE, sha: SHA }),
+      repositories: async () => ["bad", "good", "unlisted"],
       commits: async () => [
         { sha: "new", message: "Govern good", author: "David", time: "2026-10-30T11:00:00Z" },
         { sha: "old", message: "Seed", author: "David", time: "2026-10-30T09:00:00Z" },
@@ -59,14 +59,14 @@ async function get(handle, path, email = "me@example.org", method = "GET") {
   }
 }
 
-test("the board shows each owner, grouped by project, worst first, and says when there is none", async () => {
+test("the board groups by project, worst first, and says when there is none", async () => {
   const { status, text } = await get(handler(fakes()), "/");
   assert.equal(status, 200);
   assert.ok(text.indexOf("example-org/bad") < text.indexOf("example-org/good"), "worst first");
   assert.match(text, /<h3>tools<\/h3>/);
   assert.match(text, /private/);
-  assert.match(text, /No board yet/);
   assert.match(text, /aria-current="page">Board/);
+  assert.match((await get(handler(fakes({ storage: { latest: async () => null } })), "/")).text, /No board yet/);
 });
 
 test("what a repository says is escaped, everywhere", async () => {
@@ -91,7 +91,7 @@ test("the history shows state changes in words, and the board's snapshots", asyn
   assert.ok(!text.includes("a".repeat(13)), "a snapshot's hash is shortened");
 });
 
-test("only the team gets in, and the check ignores case and fails closed", async () => {
+test("someone on no list gets in nowhere, and the check ignores case", async () => {
   const handle = handler(fakes());
   assert.equal((await get(handle, "/", "ME@example.org")).status, 200);
   for (const email of ["stranger@example.org", ""]) {
@@ -107,8 +107,10 @@ test("the health check needs no sign-in, and tells nothing", async () => {
   assert.equal(text, "ok\n");
 });
 
-test("nothing but reading is accepted, and an unknown page is not found", async () => {
-  assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 405);
+test("only GET and POST are taken, and an unknown page is not found", async () => {
+  assert.equal((await get(handler(fakes()), "/", "me@example.org", "PUT")).status, 405);
+  assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 404);
+  assert.equal((await get(handler(fakes()), "/example-org")).status, 404);
   assert.equal((await get(handler(fakes()), "/nope")).status, 404);
 });
 
@@ -118,12 +120,22 @@ test("pages allow no scripts and are not stored", async () => {
   assert.equal(headers.get("cache-control"), "no-store");
 });
 
-test("one owner failing shows on its part of the page only", async () => {
-  const failing = { latest: async (o) => { if (o.name === "someone") throw new Error("storage said 500"); return BOARD; } };
+test("what can't be read is said on the page", async () => {
+  const failing = { latest: async () => { throw new Error("storage said 500"); } };
   const { status, text } = await get(handler(fakes({ storage: failing })), "/");
   assert.equal(status, 200);
   assert.match(text, /storage said 500/);
-  assert.match(text, /example-org\/good/);
+});
+
+test("the page names only this deployment's owner, and reads only its tenant and repository", async () => {
+  const asked = [];
+  const handle = handler(fakes({
+    storage: { latest: async (o) => (asked.push(o), BOARD), log: async (o) => (asked.push(o), []) },
+    github: { stateFile: async (o) => (asked.push(o), { state: STATE, sha: "s" }), state: async (o) => (asked.push(o), STATE), commits: async (o) => (asked.push(o), []) },
+  }));
+  for (const path of ["/", "/state", "/history"]) assert.equal((await get(handle, path)).status, 200);
+  assert.ok(asked.length >= 3);
+  assert.ok(asked.every((o) => o === OWNER));
 });
 
 test("a read is kept for a minute, and a failure isn't kept", async () => {
@@ -147,10 +159,10 @@ test("a commit's state file is read once, and a failed read is tried again", asy
     state: async () => { reads++; if (fail) throw new Error("no"); return STATE; },
   };
   const history = stateHistory(github);
-  await assert.rejects(history(OWNERS[0]));
+  await assert.rejects(history(OWNER));
   fail = false;
-  await history(OWNERS[0]);
-  await history(OWNERS[0]);
+  await history(OWNER);
+  await history(OWNER);
   assert.equal(reads, 2);
 });
 
@@ -185,8 +197,8 @@ test("the reader reads as each owner's installation, Contents read only, and kee
     return new Response(JSON.stringify(STATE));
   };
   const github = reader({ appId: "1", appKey: privateKey }, { fetch, now: () => time });
-  assert.deepEqual(await github.state(OWNERS[0]), STATE);
-  await github.state(OWNERS[0]);
+  assert.deepEqual(await github.state(OWNER), STATE);
+  await github.state(OWNER);
   assert.equal(calls.filter((c) => c.url.includes("access_tokens")).length, 1, "the token is kept");
   const made = calls.find((c) => c.url.includes("access_tokens"));
   assert.match(made.url, /installations\/11\/access_tokens/);
@@ -194,10 +206,9 @@ test("the reader reads as each owner's installation, Contents read only, and kee
   assert.match(calls.at(-1).url, /repos\/example-org\/release-state\/contents\/state\.json\?ref=main/);
   assert.equal(calls.at(-1).init.headers.Authorization, "Bearer token-11");
 
-  assert.deepEqual(await github.commits(OWNERS[1]), [{ sha: "s", message: "Title", author: "David", time: "d" }]);
-  assert.equal(calls.at(-1).init.headers.Authorization, "Bearer token-22");
+  assert.deepEqual(await github.commits(OWNER), [{ sha: "s", message: "Title", author: "David", time: "d" }]);
   time += 3_600_000;
-  await github.state(OWNERS[0]);
+  await github.state(OWNER);
   assert.equal(calls.filter((c) => c.url.includes("installations/11")).length, 2, "a token near its end is replaced");
 });
 
@@ -228,16 +239,15 @@ test("storage refusing is an error, not an empty board", async () => {
   await assert.rejects(store.latest({ tenant: "x" }), /storage said 403/);
 });
 
-test("the config needs everything, and reads the owners", () => {
-  const env = { RELEASE_OWNERS: "A-org:1, b:22", TEAM: "ME@x.org, you@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
+test("the config is for one owner, and needs everything", () => {
+  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", TEAM: "ME@x.org, you@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
-  assert.deepEqual(config.owners[0], { name: "A-org", installation: "1", tenant: "release-a-org" });
-  assert.equal(config.owners[1].installation, "22");
+  assert.deepEqual(config.owner, { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
   assert.deepEqual(config.team, ["me@x.org", "you@x.org"]);
   assert.equal(config.storageUrl, "https://storage.sustenaut.eu");
   assert.equal(config.port, 8080);
   for (const name of Object.keys(env)) {
     assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
   }
-  assert.throws(() => configFrom({ ...env, RELEASE_OWNERS: "A-org" }), /owner:installation-id/);
+  assert.throws(() => configFrom({ ...env, RELEASE_READER_APP_INSTALLATION_ID: "x" }), /must be a number/);
 });

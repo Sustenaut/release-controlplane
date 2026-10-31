@@ -77,11 +77,5 @@
   ],
   "own_hosts": [
     "sustenaut.eu"
-  ],
-  "other_secrets": [
-    {
-      "name": "SUSTENAUT_DEPLOY_SSH_KEY",
-      "reason": "An SSH key to our own server, which can only run sustenaut-deploy"
-    }
   ]
 }

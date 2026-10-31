@@ -5,7 +5,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { createServer } from "node:http";
 import { fakePublisher } from "pubpr/fake";
 import { handler } from "../server.js";
-import { FormError, noteFrom, shaFrom, stateFrom } from "../forms.js";
+import { FormError, labelsOf, noteFrom, shaFrom, stateFrom } from "../forms.js";
 import { stateText, writer } from "../writer.js";
 import { reader } from "../github.js";
 import { configFrom } from "../config.js";
@@ -129,7 +129,10 @@ test("a bad form says why, and saves nothing", async () => {
   await bad([["note", "n"]], /Reload the page/);
   await bad([["base", "nope"], ["note", "n"]], /Reload the page/);
   await bad([["base", SHA], ["note", "n"], ["repo", "stranger"]], /isn&#39;t a repository/);
-  await bad([["base", SHA], ["note", "n"], ["repo", "good"], ["good.project", "Bad Project"]], /project must be/);
+  await bad([["base", SHA], ["note", "n"], ["repo", "good"], ["good.project", "typo"]], /isn&#39;t one of the labels/);
+  await bad([["base", SHA], ["note", "n"], ["repo", "good"], ["good.project", "__new__"]], /none is given/);
+  await bad([["base", SHA], ["note", "n"], ["new-label", "Bad Label"], ["repo", "good"], ["good.project", "__new__"]], /A label is lower case/);
+  await bad([["base", SHA], ["note", "n"], ["new-label", "spare"], ["repo", "good"], ["good.project", "tools"]], /wouldn&#39;t be kept/);
   assert.deepEqual(saved, []);
 });
 
@@ -184,8 +187,25 @@ test("history offers going back to any but the newest, and reverting saves the o
   assert.equal(saved[0].note, "Undo it");
 });
 
+test("the state page offers the labels in use, the current one chosen, and a new one", async () => {
+  const { text } = await call(app().handle, "/state");
+  assert.match(text, /<select name="good.project"[^>]*><option value="">None<\/option><option value="tools" selected>tools<\/option><option value="__new__">New label…/);
+  assert.match(text, /<select name="bad.project"[^>]*><option value="" selected>None/);
+  assert.match(text, /<select name="unlisted.project"/);
+  assert.match(text, /name="new-label"/);
+});
+
+test("a new label goes to each repository set to it, and then is one of the labels", () => {
+  const f = new URLSearchParams(form([["new-label", "shiny"], ["repo", "good"], ["good.board", "on"], ["good.project", "__new__"], ["repo", "bad"], ["bad.board", "on"], ["bad.project", "__new__"]]));
+  const made = stateFrom(f, STATE, []);
+  assert.equal(made.repos.good.project, "shiny");
+  assert.equal(made.repos.bad.project, "shiny");
+  assert.deepEqual(labelsOf(made), ["shiny"]);
+  assert.deepEqual(labelsOf(STATE), ["tools"]);
+});
+
 test("stateFrom keeps what the form doesn't name, adds on a role, and drops a project", () => {
-  const f = new URLSearchParams(form([["repo", "good"], ["good.board", "on"], ["repo", "unlisted"], ["repo", "more"], ["more.govern", "on"], ["more.project", "pub"]]));
+  const f = new URLSearchParams(form([["new-label", "pub"], ["repo", "good"], ["good.board", "on"], ["repo", "unlisted"], ["repo", "more"], ["more.govern", "on"], ["more.project", "__new__"]]));
   const made = stateFrom(f, STATE, ["good", "bad", "unlisted", "more"]);
   assert.deepEqual(made.repos.bad, STATE.repos.bad, "not in the form");
   assert.deepEqual(made.repos.good, { board: true, protect: false, govern: false }, "project emptied");

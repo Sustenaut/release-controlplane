@@ -1,6 +1,8 @@
 // The pages, as plain HTML with no scripts. A grade's breakdown opens with the
 // browser's own <details>.
 
+import { labelsOf, NEW_LABEL } from "./forms.js";
+
 const LETTERS = ["A", "B", "C", "D", "E"];
 const CATEGORIES = [["quality", "Quality"], ["security", "Security"], ["delivery", "Delivery"]];
 
@@ -40,7 +42,7 @@ details>summary::-webkit-details-marker{display:none}
 details ul{margin:8px 0 0;padding:0 0 0 16px;font-size:13px;min-width:220px}
 .on{color:var(--accent);font-weight:600}.off{color:var(--muted)}
 .absent td{color:var(--muted)}
-input:not([type]),input[name=note]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);width:100%;min-width:90px}
+select,input:not([type]),input[name=note]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);width:100%;min-width:90px}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 button{font:inherit;font-weight:600;padding:6px 14px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:var(--bg);cursor:pointer}
 form{display:flex;flex-direction:column;gap:10px}
@@ -110,9 +112,14 @@ function readRow(name, r) {
   return `<tr><td class="mono">${escape(name)}</td><td>${escape(r.project ?? "·")}</td>${role(r.board)}${role(r.protect)}${role(r.govern)}</tr>`;
 }
 
-function editRow(name, r) {
+function projectSelect(name, current, labels) {
+  const options = ["", ...labels].map((label) => `<option value="${escape(label)}"${label === (current ?? "") ? " selected" : ""}>${escape(label || "None")}</option>`);
+  return `<select name="${escape(name)}.project" aria-label="${escape(name)} project">${options.join("")}<option value="${NEW_LABEL}">New label…</option></select>`;
+}
+
+function editRow(name, r, labels) {
   return `<tr${r ? "" : ' class="absent"'}><td class="mono">${escape(name)}<input type="hidden" name="repo" value="${escape(name)}"></td>
-<td><input name="${escape(name)}.project" aria-label="${escape(name)} project" value="${escape(r?.project ?? "")}"></td>
+<td>${projectSelect(name, r?.project, labels)}</td>
 ${box(name, "board", r?.board)}${box(name, "protect", r?.protect)}${box(name, "govern", r?.govern)}</tr>`;
 }
 
@@ -127,11 +134,13 @@ function stateBody({ owner, result, visible }, canEdit) {
     return `<div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div>`;
   }
   const others = visible.error ? [] : visible.value.filter((name) => !state.repos[name]);
-  const rows = [...named].sort((a, b) => a.localeCompare(b)).map((name) => editRow(name, state.repos[name]))
-    .concat(others.map((name) => editRow(name, null))).join("");
+  const labels = labelsOf(state);
+  const rows = [...named].sort((a, b) => a.localeCompare(b)).map((name) => editRow(name, state.repos[name], labels))
+    .concat(others.map((name) => editRow(name, null, labels))).join("");
   return `${visible.error ? failed(visible) : ""}
 <form method="post" action="/state"><input type="hidden" name="base" value="${escape(sha)}">
 <div class="wrap"><table>${HEAD}<tbody>${rows}</tbody></table></div>
+<p class="actions"><input name="new-label" maxlength="40" pattern="[a-z0-9][a-z0-9-]*" aria-label="New label" placeholder="New label, for repositories set to it (lower case, digits, hyphens)"></p>
 <p class="actions"><input name="note" required maxlength="200" aria-label="Why" placeholder="Why this change?"> <button>Save</button></p>
 <p class="meta">A save opens a pull request on ${escape(owner.name)}/release-state that merges itself once its check passes. A repository in grey joins when a role is switched on.</p>
 </form>`;

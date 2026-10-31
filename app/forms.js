@@ -4,6 +4,8 @@
 const NAME = /^[A-Za-z0-9_.-]+$/;
 const PROJECT = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const NOTE_CHARS = 200;
+// What a repository's dropdown says to take the form's new label instead.
+export const NEW_LABEL = "__new__";
 
 export class FormError extends Error {}
 
@@ -20,10 +22,21 @@ export function shaFrom(form) {
   return sha;
 }
 
+// The labels a state uses, which its dropdowns offer. A label no repository uses any
+// more stops being offered.
+export function labelsOf(state) {
+  const used = Object.values(state.repos).map((r) => r.project).filter(Boolean);
+  return [...new Set(used)].sort((a, b) => a.localeCompare(b));
+}
+
 export function stateFrom(form, current, visible) {
   const known = new Set([...Object.keys(current.repos), ...visible]);
   const named = form.getAll("repo");
   const repos = {};
+  const labels = new Set(labelsOf(current));
+  const newLabel = (form.get("new-label") ?? "").trim();
+  if (newLabel && !PROJECT.test(newLabel)) throw new FormError("A label is lower case letters, digits and hyphens, at most 40.");
+  let usedNew = false;
   for (const name of Object.keys(current.repos)) {
     if (!named.includes(name)) repos[name] = current.repos[name];
   }
@@ -34,14 +47,19 @@ export function stateFrom(form, current, visible) {
       protect: form.get(`${name}.protect`) === "on",
       govern: form.get(`${name}.govern`) === "on",
     };
-    const project = (form.get(`${name}.project`) ?? "").trim();
-    if (project && !PROJECT.test(project)) {
-      throw new FormError(`${name}'s project must be lower case letters, digits and hyphens.`);
+    let project = form.get(`${name}.project`) ?? "";
+    if (project === NEW_LABEL) {
+      if (!newLabel) throw new FormError(`${name} is set to a new label, but none is given.`);
+      project = newLabel;
+      usedNew = true;
+    } else if (project && !labels.has(project)) {
+      throw new FormError(`${project} isn't one of the labels.`);
     }
     // A repository not yet in the state joins it when a role is switched on.
     if (current.repos[name] || roles.board || roles.protect || roles.govern) {
       repos[name] = project ? { project, ...roles } : roles;
     }
   }
+  if (newLabel && !usedNew) throw new FormError(`No repository was set to the new label ${newLabel}, so it wouldn't be kept.`);
   return { owner: current.owner, repos };
 }

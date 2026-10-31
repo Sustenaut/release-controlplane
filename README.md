@@ -9,6 +9,10 @@ live in the state repositories, `Sustenaut/release-state` and
 
 `app/` is a small Node server with no build step, for the team to read: one owner's board, its state, and the history of both. Its pages are plain HTML with no scripts.
 
+A repository's project is a label that groups it on the board. An operator picks it
+from a list of the labels in use, or adds one with "New label". It changes nothing
+else.
+
 An operator changes the state on the state page, or goes back to an earlier one on
 the history page. Each change needs a note, and becomes a pull request on the
 state repository that merges itself once `state / valid` passes, naming who asked. If

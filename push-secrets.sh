@@ -8,7 +8,7 @@
 # From Bitwarden (which with-secrets exports in upper case):
 #   github-release-reader-id, -key, -installation-id       the reader app
 #   github-release-writer-id, -key, -installation-id       the state writer app
-#   release-cookie-secret      oauth2-proxy's cookie secret (32 random bytes, base64)
+#   release-cookie-secret      oauth2-proxy's cookie secret: openssl rand -base64 32 | tr '+/' '-_'
 # From Terraform: the team (var.team), and the owner, the one operator for now.
 # Not here: the sign-in client (the Secret release-oidc), which register-client.sh
 # registers with auth.sustenaut.eu and puts in on the server.
@@ -29,6 +29,22 @@ for name in GITHUB_RELEASE_READER_ID GITHUB_RELEASE_READER_KEY GITHUB_RELEASE_RE
     exit 1
   fi
 done
+
+# oauth2-proxy takes URL-safe base64 of 16, 24 or 32 bytes, or a value that long as it
+# stands, and otherwise crashes at start.
+cookie_bytes=$(printf '%s' "$RELEASE_COOKIE_SECRET" | tr -d '=' | tr -- '-_' '+/' | { base64 -d 2>/dev/null || true; } | wc -c)
+case "$RELEASE_COOKIE_SECRET" in
+  *[+/]*) cookie_bytes=0 ;;
+esac
+if [ "$cookie_bytes" != 16 ] && [ "$cookie_bytes" != 24 ] && [ "$cookie_bytes" != 32 ]; then
+  case "${#RELEASE_COOKIE_SECRET}" in
+    16 | 24 | 32) ;;
+    *)
+      echo "release-cookie-secret won't work: make it with: openssl rand -base64 32 | tr '+/' '-_'" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 # SSH reaches the server over Sustenaut's tailnet only (be signed in to it).
 server=$(terraform -chdir="$infra" output -json sustenaut_server | jq -r .ssh_host)

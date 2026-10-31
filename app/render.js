@@ -88,7 +88,16 @@ function byProject(rows) {
 
 const failed = (result) => `<p class="problem">Couldn't read this: ${escape(result.error)}</p>`;
 
-export function boardPage({ owner, result }, who) {
+// When the board was last looked at, which its own time can't say: a run that finds
+// nothing new keeps nothing.
+function lastChecked(checked) {
+  if (!checked?.value) return "";
+  const { time, conclusion, url } = checked.value;
+  const went = conclusion === "success" ? "" : ` <span class="problem">It ended: ${escape(conclusion)}.</span>`;
+  return `<p class="meta">Last checked <a href="${escape(url)}">${escape(time)}</a>.${went}</p>`;
+}
+
+export function boardPage({ owner, result, checked }, who) {
   let body;
   if (result.error) body = failed(result);
   else if (!result.value) body = '<p class="meta">No board yet. The hourly run makes the first.</p>';
@@ -100,7 +109,7 @@ export function boardPage({ owner, result }, who) {
 <tbody>${[...rows].sort(worstFirst).map(boardRow).join("")}</tbody></table></div>`).join("");
     body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
   }
-  return page("Board", "Board", who, `<h1>Board</h1><section>${body}</section>`, owner);
+  return page("Board", "Board", who, `<h1>Board</h1><section>${lastChecked(checked)}${body}</section>`, owner);
 }
 
 const role = (on) => (on ? '<td class="on">on</td>' : '<td class="off">off</td>');

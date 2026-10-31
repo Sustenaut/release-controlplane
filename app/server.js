@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import { configFrom } from "./config.js";
 import { reader } from "./github.js";
 import { boards } from "./storage.js";
+import { lastRun } from "./runs.js";
 import { writer } from "./writer.js";
 import { FormError, noteFrom, shaFrom, stateFrom } from "./forms.js";
 import { changes } from "./history.js";
@@ -90,7 +91,8 @@ export function stateHistory(github) {
   };
 }
 
-export function handler({ owner, team, operators = [], github, storage, save }) {
+export function handler({ owner, team, operators = [], github, storage, save, boardRun }) {
+  const checked = cached(boardRun ?? (async () => null));
   const latest = cached(() => storage.latest(owner));
   const state = cached(() => github.stateFile(owner));
   const visible = cached(() => github.repositories(owner));
@@ -163,7 +165,7 @@ export function handler({ owner, team, operators = [], github, storage, save }) 
       }));
       return out;
     };
-    if (path === "/") return send(200, boardPage(await read({ result: latest }), who));
+    if (path === "/") return send(200, boardPage(await read({ result: latest, checked }), who));
     if (path === "/state") return send(200, statePage(await read({ result: state, ...(canEdit ? { visible } : {}) }), who, canEdit));
     if (path === "/history") return send(200, historyPage(await read({ commits: stateCommits, log, ...(canEdit ? { result: state } : {}) }), who, canEdit));
     return send(404, "Not found.\n", "text/plain");
@@ -173,7 +175,7 @@ export function handler({ owner, team, operators = [], github, storage, save }) 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
   const save = config.writerId && config.writerKey ? writer(config) : null;
-  const handle = handler({ owner: config.owner, team: config.team, operators: config.operators, github: reader(config), storage: boards(config), save });
+  const handle = handler({ owner: config.owner, team: config.team, operators: config.operators, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

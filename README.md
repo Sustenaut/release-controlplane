@@ -31,6 +31,7 @@ tenant, so neither can see the other.
 | `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
 | `OPERATORS` | The team's addresses that may change the state, separated by commas. Without it, nobody can. |
 | `RELEASE_STATE_WRITER_APP_ID`, `RELEASE_STATE_WRITER_APP_KEY`, `RELEASE_STATE_WRITER_INSTALLATION_ID` | The state writer app, which may write only to the state repository. Without them, the app only reads. |
+| `RELEASE_BOARD_WORKFLOW` | Optional: `owner/repository/file` of the public workflow that makes the board, for the board's "Last checked" |
 | `STORAGE_URL`, `PORT` | Optional: `https://storage.sustenaut.eu` and `8080` |
 
 ## What runs

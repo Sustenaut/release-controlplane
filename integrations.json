@@ -5,14 +5,16 @@
       "paths": [
         "with-secrets",
         "with-secrets.json"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.actions-oidc",
       "paths": [
         ".github/workflows/hourly-board.yml",
         "scripts/publish-board.py"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.app-token",
@@ -23,7 +25,8 @@
         "app/test/**",
         "k8s/app.yaml",
         "pubkit.json"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.ghcr",
@@ -31,39 +34,45 @@
         ".github/workflows/deploy.yml",
         "k8s/app.yaml",
         "k8s/kustomization.yaml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "github.repo-ops",
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "letsencrypt.certs",
       "paths": [
         "k8s/ingress.yaml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "slack.post",
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         "pubkit.json"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "sonarcloud.scan",
       "paths": [
         ".github/workflows/hourly-board.yml"
-      ]
+      ],
+      "mode": "required"
     },
     {
       "plugin": "tailscale.tailnet",
       "paths": [
         ".github/workflows/deploy.yml"
-      ]
+      ],
+      "mode": "required"
     }
   ],
   "exclude": [

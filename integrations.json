@@ -19,6 +19,8 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
+        "app/config.js",
+        "app/test/**",
         "pubkit.json"
       ]
     },
@@ -48,5 +50,8 @@
       "path": "tests/**",
       "reason": "Fakes and test data"
     }
+  ],
+  "own_hosts": [
+    "sustenaut.eu"
   ]
 }

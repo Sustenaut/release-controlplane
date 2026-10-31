@@ -7,19 +7,30 @@ live in the state repositories, `Sustenaut/release-state` and
 
 ## The app
 
-`app/` is a small Node server with no build step, for the team to read at
-release.sustenaut.eu: the board, each owner's state, and the history of both. It
-only reads. Its pages are plain HTML with no scripts.
+`app/` is a small Node server with no build step, for the team to read: one owner's board, its state, and the history of both. Its pages are plain HTML with no scripts.
+
+An operator changes the state on the state page, or goes back to an earlier one on
+the history page. Each change needs a note, and becomes a pull request on the
+state repository that merges itself once `state / valid` passes, naming who asked. If
+the state has changed since the page was loaded, nothing is saved and it says to look
+again.
 
 It trusts the email oauth2-proxy puts in `X-Forwarded-Email`, so nothing but the
-proxy may reach it, and checks it against `TEAM`.
+proxy may reach it.
+
+It checks that email against `TEAM`. **A deployment is for one owner.** Another owner
+runs its own, from the same image, with its own settings, sign-in, secrets and storage
+tenant, so neither can see the other.
 
 | Setting | What |
 |---|---|
-| `RELEASE_OWNERS` | Each owner and the reader app's installation there, as `owner:id,owner:id` |
+| `RELEASE_OWNER` | The GitHub owner this deployment is for. Its state repository is `<owner>/release-state`, and its storage tenant `release-<owner>`. |
+| `RELEASE_READER_APP_INSTALLATION_ID` | The reader app's installation on that owner |
 | `TEAM` | The email addresses that may read it, separated by commas |
 | `RELEASE_READER_APP_ID`, `RELEASE_READER_APP_KEY` | The reader app, which reads `<owner>/release-state` |
 | `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
+| `OPERATORS` | The team's addresses that may change the state, separated by commas. Without it, nobody can. |
+| `RELEASE_STATE_WRITER_APP_ID`, `RELEASE_STATE_WRITER_APP_KEY`, `RELEASE_STATE_WRITER_INSTALLATION_ID` | The state writer app, which may write only to the state repository. Without them, the app only reads. |
 | `STORAGE_URL`, `PORT` | Optional: `https://storage.sustenaut.eu` and `8080` |
 
 ## What runs

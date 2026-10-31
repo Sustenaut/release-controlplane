@@ -1,0 +1,93 @@
+# The app (app/). It trusts the email oauth2-proxy puts in X-Forwarded-Email, so
+# nothing but the proxy may reach it: no ingress points here, and
+# admin/network-policy.yaml lets in only the proxy's pods. It keeps nothing: the state
+# is in the state repositories and the boards in storage.
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+spec:
+  selector:
+    app: release
+  ports:
+    - name: http
+      port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: release
+  template:
+    metadata:
+      labels:
+        app: release
+    spec:
+      serviceAccountName: app
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: app
+          image: ghcr.io/sustenaut/sustenaut-release
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # One deployment is for one owner. Its Secret holds that owner's apps' values.
+            - name: RELEASE_OWNER
+              value: Sustenaut
+            - name: RELEASE_READER_APP_INSTALLATION_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: reader-installation-id } }
+            - name: RELEASE_STATE_WRITER_INSTALLATION_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: writer-installation-id } }
+            - name: TEAM
+              valueFrom: { secretKeyRef: { name: release-secrets, key: team } }
+            - name: OPERATORS
+              valueFrom: { secretKeyRef: { name: release-secrets, key: operators } }
+            - name: RELEASE_READER_APP_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: reader-app-id } }
+            - name: RELEASE_READER_APP_KEY
+              valueFrom: { secretKeyRef: { name: release-secrets, key: reader-app-key } }
+            - name: RELEASE_STATE_WRITER_APP_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: writer-app-id } }
+            - name: RELEASE_STATE_WRITER_APP_KEY
+              valueFrom: { secretKeyRef: { name: release-secrets, key: writer-app-key } }
+            # The file, not the token: storage.js reads it on each request.
+            - name: STORAGE_TOKEN_FILE
+              value: /var/run/secrets/storage.sustenaut.eu/token
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 192Mi
+          volumeMounts:
+            - name: storage-token
+              mountPath: /var/run/secrets/storage.sustenaut.eu
+              readOnly: true
+      volumes:
+        # A token for storage.sustenaut.eu only (it is no use against the Kubernetes
+        # API), renewed by the kubelet before its 10 minutes run out.
+        - name: storage-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: storage.sustenaut.eu
+                  expirationSeconds: 600
+                  path: token

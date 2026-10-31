@@ -4,7 +4,7 @@
     "with": {
       "setup": "make venv node",
       "test": "make functional",
-      "shellcheck": "with-secrets"
+      "shellcheck": "with-secrets push-secrets.sh register-client.sh"
     }
   },
   "protect": {

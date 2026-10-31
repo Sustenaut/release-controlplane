@@ -23,7 +23,17 @@
         ".github/workflows/hourly-board.yml",
         "app/config.js",
         "app/test/**",
+        "k8s/app.yaml",
         "pubkit.json"
+      ],
+      "mode": "required"
+    },
+    {
+      "plugin": "github.ghcr",
+      "paths": [
+        ".github/workflows/deploy.yml",
+        "k8s/app.yaml",
+        "k8s/kustomization.yaml"
       ],
       "mode": "required"
     },
@@ -32,6 +42,13 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml"
+      ],
+      "mode": "required"
+    },
+    {
+      "plugin": "letsencrypt.certs",
+      "paths": [
+        "k8s/ingress.yaml"
       ],
       "mode": "required"
     },
@@ -49,6 +66,13 @@
         ".github/workflows/hourly-board.yml"
       ],
       "mode": "required"
+    },
+    {
+      "plugin": "tailscale.tailnet",
+      "paths": [
+        ".github/workflows/deploy.yml"
+      ],
+      "mode": "required"
     }
   ],
   "exclude": [
@@ -59,5 +83,11 @@
   ],
   "own_hosts": [
     "sustenaut.eu"
+  ],
+  "other_secrets": [
+    {
+      "name": "SUSTENAUT_DEPLOY_SSH_KEY",
+      "reason": "An SSH key to our own server, which can only run sustenaut-deploy"
+    }
   ]
 }

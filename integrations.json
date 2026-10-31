@@ -1,0 +1,52 @@
+{
+  "uses": [
+    {
+      "plugin": "bitwarden.secrets",
+      "paths": [
+        "with-secrets",
+        "with-secrets.json"
+      ]
+    },
+    {
+      "plugin": "github.actions-oidc",
+      "paths": [
+        ".github/workflows/hourly-board.yml",
+        "scripts/publish-board.py"
+      ]
+    },
+    {
+      "plugin": "github.app-token",
+      "paths": [
+        ".github/workflows/fleet-nightly.yml",
+        ".github/workflows/hourly-board.yml",
+        "pubkit.json"
+      ]
+    },
+    {
+      "plugin": "github.repo-ops",
+      "paths": [
+        ".github/workflows/fleet-nightly.yml",
+        ".github/workflows/hourly-board.yml"
+      ]
+    },
+    {
+      "plugin": "slack.post",
+      "paths": [
+        ".github/workflows/fleet-nightly.yml",
+        "pubkit.json"
+      ]
+    },
+    {
+      "plugin": "sonarcloud.scan",
+      "paths": [
+        ".github/workflows/hourly-board.yml"
+      ]
+    }
+  ],
+  "exclude": [
+    {
+      "path": "tests/**",
+      "reason": "Fakes and test data"
+    }
+  ]
+}

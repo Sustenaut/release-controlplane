@@ -6,8 +6,8 @@
 #   ./with-secrets ./push-secrets.sh
 #
 # From Bitwarden (which with-secrets exports in upper case):
-#   github-release-reader-id, github-release-reader-key    the reader app
-#   github-release-writer-id, github-release-writer-key    the state writer app
+#   github-release-reader-id, -key, -installation-id       the reader app
+#   github-release-writer-id, -key, -installation-id       the state writer app
 #   release-cookie-secret      oauth2-proxy's cookie secret (32 random bytes, base64)
 # From Terraform: the team (var.team), and the owner, the one operator for now.
 # Not here: the sign-in client (the Secret release-oidc), which register-client.sh
@@ -22,8 +22,8 @@ root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 infra="${BUSINESS_PLAN:-$root/../business-plan}/infra"
 [ -d "$infra" ] || { echo "no business-plan checkout at ${infra%/infra}: clone it beside this repository or set BUSINESS_PLAN" >&2; exit 1; }
 
-for name in GITHUB_RELEASE_READER_ID GITHUB_RELEASE_READER_KEY GITHUB_RELEASE_WRITER_ID \
-  GITHUB_RELEASE_WRITER_KEY RELEASE_COOKIE_SECRET; do
+for name in GITHUB_RELEASE_READER_ID GITHUB_RELEASE_READER_KEY GITHUB_RELEASE_READER_INSTALLATION_ID \
+  GITHUB_RELEASE_WRITER_ID GITHUB_RELEASE_WRITER_KEY GITHUB_RELEASE_WRITER_INSTALLATION_ID RELEASE_COOKIE_SECRET; do
   if [ -z "${!name:-}" ]; then
     echo "$name is not set: run this through ./with-secrets, and check the secret is in Bitwarden." >&2
     exit 1
@@ -49,8 +49,10 @@ metadata:
 data:
   reader-app-id: $(b64 "$GITHUB_RELEASE_READER_ID")
   reader-app-key: $(b64 "$GITHUB_RELEASE_READER_KEY")
+  reader-installation-id: $(b64 "$GITHUB_RELEASE_READER_INSTALLATION_ID")
   writer-app-id: $(b64 "$GITHUB_RELEASE_WRITER_ID")
   writer-app-key: $(b64 "$GITHUB_RELEASE_WRITER_KEY")
+  writer-installation-id: $(b64 "$GITHUB_RELEASE_WRITER_INSTALLATION_ID")
   cookie-secret: $(b64 "$RELEASE_COOKIE_SECRET")
   team: $(b64 "$team")
   team-emails: $(b64 "$team_emails")

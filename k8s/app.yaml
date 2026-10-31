@@ -40,10 +40,13 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            # owner:reader-installation[:writer-installation]. An owner with no
-            # writer installation stays read-only.
-            - name: RELEASE_OWNERS
-              value: Sustenaut:176888577:176891296,schryer:176945730
+            # One deployment is for one owner. Its Secret holds that owner's apps' values.
+            - name: RELEASE_OWNER
+              value: Sustenaut
+            - name: RELEASE_READER_APP_INSTALLATION_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: reader-installation-id } }
+            - name: RELEASE_STATE_WRITER_INSTALLATION_ID
+              valueFrom: { secretKeyRef: { name: release-secrets, key: writer-installation-id } }
             - name: TEAM
               valueFrom: { secretKeyRef: { name: release-secrets, key: team } }
             - name: OPERATORS

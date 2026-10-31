@@ -21,7 +21,10 @@
         ".github/workflows/hourly-board.yml",
         "app/config.js",
         "app/test/**",
+<<<<<<< HEAD
         "k8s/app.yaml",
+=======
+>>>>>>> claude/app-state-edits
         "pubkit.json"
       ]
     },

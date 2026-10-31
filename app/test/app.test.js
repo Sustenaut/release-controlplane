@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { cached, handler, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
+import { lastRun } from "../runs.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
 import { escape } from "../render.js";
@@ -250,4 +251,38 @@ test("the config is for one owner, and needs everything", () => {
     assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
   }
   assert.throws(() => configFrom({ ...env, RELEASE_READER_APP_INSTALLATION_ID: "x" }), /must be a number/);
+});
+
+test("the board says when it was last checked, apart from when it last changed", async () => {
+  const boardRun = async () => ({ time: "2026-10-31T09:13:00Z", conclusion: "success", url: "https://github.com/x/runs/1" });
+  const { text } = await get(handler({ ...fakes(), boardRun }), "/");
+  assert.match(text, /Last checked <a href="https:\/\/github.com\/x\/runs\/1">2026-10-31T09:13:00Z<\/a>\./);
+  assert.match(text, /2 repos: 1 A, 1 D/);
+  assert.ok(!text.includes("It ended"));
+});
+
+test("a run that didn't pass says so", async () => {
+  const boardRun = async () => ({ time: "t", conclusion: "failure", url: "https://u" });
+  assert.match((await get(handler({ ...fakes(), boardRun }), "/")).text, /It ended: failure/);
+});
+
+test("with no workflow, or GitHub not answering, the board still shows, without that line", async () => {
+  assert.ok(!(await get(handler(fakes()), "/")).text.includes("Last checked"));
+  const failing = await get(handler({ ...fakes(), boardRun: async () => { throw new Error("GitHub said 403"); } }), "/");
+  assert.equal(failing.status, 200);
+  assert.ok(!failing.text.includes("Last checked"));
+  assert.match(failing.text, /example-org\/good/);
+});
+
+test("the last run comes from the workflow named, with no token", async () => {
+  const seen = [];
+  const fetch = async (url, init) => {
+    seen.push({ url, init });
+    return Response.json({ workflow_runs: [{ updated_at: "t", conclusion: "success", html_url: "https://u" }] });
+  };
+  assert.deepEqual(await lastRun("o/r/board.yml", { fetch })(), { time: "t", conclusion: "success", url: "https://u" });
+  assert.equal(seen[0].url, "https://api.github.com/repos/o/r/actions/workflows/board.yml/runs?status=completed&per_page=1");
+  assert.equal(seen[0].init.headers.Authorization, undefined);
+  assert.equal(await lastRun("o/r/b.yml", { fetch: async () => Response.json({ workflow_runs: [] }) })(), null);
+  await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => new Response("", { status: 403 }) })(), /GitHub said 403/);
 });

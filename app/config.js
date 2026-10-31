@@ -27,6 +27,8 @@ export function configFrom(env) {
     writerKey: env.RELEASE_STATE_WRITER_APP_KEY,
     appId: need("RELEASE_READER_APP_ID"),
     appKey: need("RELEASE_READER_APP_KEY"),
+    // owner/repository/file of the workflow that makes the board. Optional.
+    boardWorkflow: env.RELEASE_BOARD_WORKFLOW,
     storageUrl: (env.STORAGE_URL ?? "https://storage.sustenaut.eu").replace(/\/$/, ""),
     storageTokenFile: need("STORAGE_TOKEN_FILE"),
     port: Number(env.PORT ?? 8080),

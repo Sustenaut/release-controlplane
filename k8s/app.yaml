@@ -43,6 +43,8 @@ spec:
             # One deployment is for one owner. Its Secret holds that owner's apps' values.
             - name: RELEASE_OWNER
               value: Sustenaut
+            - name: RELEASE_BOARD_WORKFLOW
+              value: Sustenaut/release-controlplane/hourly-board.yml
             - name: RELEASE_READER_APP_INSTALLATION_ID
               valueFrom: { secretKeyRef: { name: release-secrets, key: reader-installation-id } }
             - name: RELEASE_STATE_WRITER_INSTALLATION_ID

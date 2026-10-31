@@ -1,0 +1,16 @@
+{
+  "name": "release-controlplane",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The release control plane's app: the board, the state and its history.",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node app/server.js",
+    "test": "node --test app/test/*.test.js"
+  },
+  "dependencies": {
+    "pubpr": "github:Sustenaut/pubpr#v0.1.0"
+  }
+}

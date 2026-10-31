@@ -5,6 +5,23 @@ live in the state repositories, `Sustenaut/release-state` and
 `schryer/release-state`; board snapshots live in storage. See the
 [design](https://claude.ai/artifact/KGAd5vKckHCWbrKQCKMhSV).
 
+## The app
+
+`app/` is a small Node server with no build step, for the team to read at
+release.sustenaut.eu: the board, each owner's state, and the history of both. It
+only reads. Its pages are plain HTML with no scripts.
+
+It trusts the email oauth2-proxy puts in `X-Forwarded-Email`, so nothing but the
+proxy may reach it, and checks it against `TEAM`.
+
+| Setting | What |
+|---|---|
+| `RELEASE_OWNERS` | Each owner and the reader app's installation there, as `owner:id,owner:id` |
+| `TEAM` | The email addresses that may read it, separated by commas |
+| `RELEASE_READER_APP_ID`, `RELEASE_READER_APP_KEY` | The reader app, which reads `<owner>/release-state` |
+| `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
+| `STORAGE_URL`, `PORT` | Optional: `https://storage.sustenaut.eu` and `8080` |
+
 ## What runs
 
 - **`hourly-board.yml`**, each hour for each owner: reads its `state.json` with the

@@ -29,6 +29,13 @@
       "mode": "required"
     },
     {
+      "plugin": "github.board-read",
+      "paths": [
+        "app/runs.js"
+      ],
+      "mode": "required"
+    },
+    {
       "plugin": "github.ghcr",
       "paths": [
         ".github/workflows/deploy.yml",

@@ -1,5 +1,6 @@
-// The release control plane's app: the board, the state and its history, for each
-// owner, and for its operators, changing the state. oauth2-proxy signs people in and
+// The release control plane's app: one owner's board, state and history, and for its
+// operators, changing the state. A deployment is for one owner; another owner runs its
+// own, with its own settings, sign-in and storage, so neither can see the other. oauth2-proxy signs people in and
 // hands over their verified email in X-Forwarded-Email; nothing else can reach this
 // port (k8s network policy), and the team list here is a second check, so a mistake
 // there fails closed. A change is a form, checked to come from this site, that
@@ -59,7 +60,7 @@ function fromThisSite(request) {
   }
 }
 
-// One owner failing shows on its own part of the page and doesn't stop the others.
+// What couldn't be read shows on the page, rather than failing it.
 const attempt = async (read) => {
   try {
     return { value: await read() };
@@ -89,44 +90,36 @@ export function stateHistory(github) {
   };
 }
 
-export function handler({ owners, team, operators = [], github, storage, save }) {
-  const latest = cached((name) => storage.latest(owners.find((o) => o.name === name)));
-  const state = cached((name) => github.stateFile(owners.find((o) => o.name === name)));
-  const visible = cached((name) => github.repositories(owners.find((o) => o.name === name)));
+export function handler({ owner, team, operators = [], github, storage, save }) {
+  const latest = cached(() => storage.latest(owner));
+  const state = cached(() => github.stateFile(owner));
+  const visible = cached(() => github.repositories(owner));
   const history = stateHistory(github);
-  const log = cached((name) => storage.log(owners.find((o) => o.name === name)));
-  const stateCommits = cached((name) => history(owners.find((o) => o.name === name)));
+  const log = cached(() => storage.log(owner));
+  const stateCommits = cached(() => history(owner));
 
-  async function change(request, who, owner, makeState) {
+  async function change(request, who, makeState) {
     const form = new URLSearchParams(await readBody(request));
     const note = noteFrom(form);
     const sha = shaFrom(form);
-    state.forget(owner.name);
-    const current = await state(owner.name);
+    state.forget();
+    const current = await state();
     const answer = await save.save(owner, { state: await makeState(form, current), sha, note, who });
-    state.forget(owner.name);
-    stateCommits.forget(owner.name);
+    state.forget();
+    stateCommits.forget();
     return answer;
   }
 
   function answerPage(answer, who) {
-    if (answer.status === "nothing to change") return [200, resultPage(who, "Nothing to change", "The state already says this.")];
+    if (answer.status === "nothing to change") return [200, resultPage(who, "Nothing to change", "The state already says this.", null, owner)];
     if (answer.status === "stale") {
-      return [409, resultPage(who, "It changed while you were looking", "Someone changed this state first, so nothing was saved. Look at it again, and make your change there.")];
+      return [409, resultPage(who, "It changed while you were looking", "Someone changed this state first, so nothing was saved. Look at it again, and make your change there.", null, owner)];
     }
     if (answer.autoMerge === "on" || answer.autoMerge === "merged") {
-      return [200, resultPage(who, "Saved", answer.autoMerge === "merged" ? "It has merged." : "It merges by itself once its check passes.", answer.url)];
+      return [200, resultPage(who, "Saved", answer.autoMerge === "merged" ? "It has merged." : "It merges by itself once its check passes.", answer.url, owner)];
     }
-    return [200, resultPage(who, "Opened, but it won't merge by itself", `GitHub said: ${answer.autoMerge}. Merge it there.`, answer.url)];
+    return [200, resultPage(who, "Opened, but it won't merge by itself", `GitHub said: ${answer.autoMerge}. Merge it there.`, answer.url, owner)];
   }
-
-  const each = (reads) => Promise.all(owners.map(async (owner) => {
-    const out = { owner };
-    await Promise.all(Object.entries(reads).map(async ([key, read]) => {
-      out[key] = await attempt(() => read(owner.name));
-    }));
-    return out;
-  }));
 
   return async (request, response) => {
     const send = (status, body, type = "text/html; charset=utf-8") => {
@@ -142,31 +135,37 @@ export function handler({ owners, team, operators = [], github, storage, save })
     if (path === "/healthz") return send(200, "ok\n", "text/plain");
 
     const who = String(request.headers["x-forwarded-email"] ?? "").trim().toLowerCase();
-    if (!team.includes(who)) return send(403, refusedPage(who));
-    const canEdit = Boolean(save) && operators.includes(who);
+    if (!team.includes(who)) return send(403, refusedPage(who, owner));
+    const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && operators.includes(who);
 
     if (request.method === "POST") {
-      const route = path.match(/^\/state\/([^/]+)(?:\/revert\/([0-9a-f]{40}))?$/);
-      const owner = route && owners.find((o) => o.name === route[1]);
-      if (!owner) return send(404, "Not found.\n", "text/plain");
-      if (!canEdit || !owner.writerInstallation) return send(403, resultPage(who, "Not allowed", "Only an operator can change the state."));
-      if (!fromThisSite(request)) return send(403, resultPage(who, "Not allowed", "That form didn't come from this site."));
+      const route = path.match(/^\/state(?:\/revert\/([0-9a-f]{40}))?$/);
+      if (!route) return send(404, "Not found.\n", "text/plain");
+      if (!canEdit) return send(403, resultPage(who, "Not allowed", "Only an operator can change the state.", null, owner));
+      if (!fromThisSite(request)) return send(403, resultPage(who, "Not allowed", "That form didn't come from this site.", null, owner));
       try {
-        const makeState = route[2]
-          ? async () => github.state(owner, route[2])
-          : async (form, current) => stateFrom(form, current.state, await visible(owner.name));
-        return send(...answerPage(await change(request, who, owner, makeState), who));
+        const makeState = route[1]
+          ? async () => github.state(owner, route[1])
+          : async (form, current) => stateFrom(form, current.state, await visible());
+        return send(...answerPage(await change(request, who, makeState), who));
       } catch (error) {
-        if (error instanceof FormError) return send(400, resultPage(who, "That didn't save", error.message));
+        if (error instanceof FormError) return send(400, resultPage(who, "That didn't save", error.message, null, owner));
         console.error(error);
-        return send(502, resultPage(who, "That didn't save", `Something went wrong: ${error.message}`));
+        return send(502, resultPage(who, "That didn't save", `Something went wrong: ${error.message}`, null, owner));
       }
     }
     if (request.method !== "GET" && request.method !== "HEAD") return send(405, "Not here.\n", "text/plain");
 
-    if (path === "/") return send(200, boardPage(await each({ result: latest }), who));
-    if (path === "/state") return send(200, statePage(await each({ result: state, ...(canEdit ? { visible } : {}) }), who, canEdit));
-    if (path === "/history") return send(200, historyPage(await each({ commits: stateCommits, log, ...(canEdit ? { result: state } : {}) }), who, canEdit));
+    const read = async (reads) => {
+      const out = { owner };
+      await Promise.all(Object.entries(reads).map(async ([key, get]) => {
+        out[key] = await attempt(() => get());
+      }));
+      return out;
+    };
+    if (path === "/") return send(200, boardPage(await read({ result: latest }), who));
+    if (path === "/state") return send(200, statePage(await read({ result: state, ...(canEdit ? { visible } : {}) }), who, canEdit));
+    if (path === "/history") return send(200, historyPage(await read({ commits: stateCommits, log, ...(canEdit ? { result: state } : {}) }), who, canEdit));
     return send(404, "Not found.\n", "text/plain");
   };
 }
@@ -174,7 +173,7 @@ export function handler({ owners, team, operators = [], github, storage, save })
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
   const save = config.writerId && config.writerKey ? writer(config) : null;
-  const handle = handler({ owners: config.owners, team: config.team, operators: config.operators, github: reader(config), storage: boards(config), save });
+  const handle = handler({ owner: config.owner, team: config.team, operators: config.operators, github: reader(config), storage: boards(config), save });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

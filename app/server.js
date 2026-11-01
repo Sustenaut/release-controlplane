@@ -1,13 +1,15 @@
 // The release control plane's app: one owner's board, state and history, and for its
 // operators, changing the state. A deployment is for one owner; another owner runs its
 // own, with its own settings, sign-in and storage, so neither can see the other. oauth2-proxy signs people in and
-// hands over their verified email in X-Forwarded-Email and their roles in
-// X-Forwarded-Groups; nothing else can reach this port (k8s network policy), and the
-// role is checked here too, so a mistake there fails closed. A change is a form, checked
-// to come from this site, that becomes a pull request on the owner's state repository.
+// hands over their verified email in X-Forwarded-Email and their access token in
+// X-Forwarded-Access-Token; nothing else can reach this port (k8s network policy). Their
+// roles are auth's answer, asked on each request (access.js), so a change on its access
+// page counts at once. A change is a form, checked to come from this site, that becomes
+// a pull request on the owner's state repository.
 
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { accessCheck, DEGRADED, SIGN_IN, UNAVAILABLE } from "./access.js";
 import { configFrom } from "./config.js";
 import { reader } from "./github.js";
 import { boards } from "./storage.js";
@@ -18,7 +20,7 @@ import { changes } from "./history.js";
 import { boardPage, historyPage, refusedPage, resultPage, statePage } from "./render.js";
 
 const FRESH_MS = 60_000;
-// Who may do what is kept on auth's access page, and arrives as the `access` claim.
+// Who may do what is kept on auth's access page.
 const READER = "release";
 const OPERATOR = "controller";
 const FORM_BYTES = 256 * 1024;
@@ -94,7 +96,7 @@ export function stateHistory(github) {
   };
 }
 
-export function handler({ owner, github, storage, save, boardRun }) {
+export function handler({ owner, access, github, storage, save, boardRun }) {
   const checked = cached(boardRun ?? (async () => null));
   const latest = cached(() => storage.latest(owner));
   const state = cached(() => github.stateFile(owner));
@@ -140,9 +142,17 @@ export function handler({ owner, github, storage, save, boardRun }) {
     if (path === "/healthz") return send(200, "ok\n", "text/plain");
 
     const who = String(request.headers["x-forwarded-email"] ?? "").trim().toLowerCase();
-    const roles = String(request.headers["x-forwarded-groups"] ?? "").split(",").map((role) => role.trim());
-    if (!who || !roles.includes(READER)) return send(403, refusedPage(who, owner));
-    const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && roles.includes(OPERATOR);
+    const reading = request.method === "GET" || request.method === "HEAD";
+    if (!who) return send(403, refusedPage(who, owner));
+    const decision = await access(who, String(request.headers["x-forwarded-access-token"] ?? ""), { write: !reading });
+    if (decision.reason === SIGN_IN) {
+      if (!reading) return send(403, resultPage(who, "Sign in again", "Your sign-in has ended, so nothing was saved. Go back and reload to sign in; what you typed may still be there.", null, owner));
+      response.writeHead(302, { Location: `/oauth2/start?rd=${encodeURIComponent(path)}`, "Cache-Control": "no-store" });
+      return response.end();
+    }
+    if (decision.reason === UNAVAILABLE) return send(503, resultPage(who, "Can't check your access", "The sign-in service can't be reached, so nothing was changed. Try again shortly.", null, owner));
+    if (!decision.allowed) return send(403, refusedPage(who, owner));
+    const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && decision.roles.has(OPERATOR) && decision.reason !== DEGRADED;
 
     if (request.method === "POST") {
       const route = path.match(/^\/state(?:\/revert\/([0-9a-f]{40}))?$/);
@@ -179,7 +189,8 @@ export function handler({ owner, github, storage, save, boardRun }) {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
   const save = config.writerId && config.writerKey ? writer(config) : null;
-  const handle = handler({ owner: config.owner, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
+  const access = accessCheck({ realmUrl: config.realmUrl, clientId: config.clientId, clientSecret: config.clientSecret, role: READER });
+  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

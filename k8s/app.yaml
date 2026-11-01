@@ -1,4 +1,4 @@
-# The app (app/). It trusts the email and roles oauth2-proxy hands over, so
+# The app (app/). It trusts the email and token oauth2-proxy hands over, so
 # nothing but the proxy may reach it: no ingress points here, and
 # admin/network-policy.yaml lets in only the proxy's pods. It keeps nothing: the state
 # is in the state repositories and the boards in storage.
@@ -49,6 +49,10 @@ spec:
               valueFrom: { secretKeyRef: { name: release-secrets, key: reader-installation-id } }
             - name: RELEASE_STATE_WRITER_INSTALLATION_ID
               valueFrom: { secretKeyRef: { name: release-secrets, key: writer-installation-id } }
+            - name: OIDC_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: release-oidc, key: client-id } }
+            - name: OIDC_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: release-oidc, key: client-secret } }
             - name: RELEASE_READER_APP_ID
               valueFrom: { secretKeyRef: { name: release-secrets, key: reader-app-id } }
             - name: RELEASE_READER_APP_KEY

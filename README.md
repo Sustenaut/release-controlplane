@@ -19,12 +19,15 @@ state repository that merges itself once `state / valid` passes, naming who aske
 the state has changed since the page was loaded, nothing is saved and it says to look
 again.
 
-It trusts the email and roles oauth2-proxy puts in `X-Forwarded-Email` and
-`X-Forwarded-Groups`, so nothing but the proxy may reach it.
+It trusts the email and access token oauth2-proxy puts in `X-Forwarded-Email` and
+`X-Forwarded-Access-Token`, so nothing but the proxy may reach it.
 
 Who may use it is kept on auth's [access page](https://auth.sustenaut.eu/realms/team/access):
-the `release` role may read, and a `controller` may change the state as well. A role
-taken away counts within five minutes. **A deployment is for one owner.** Another owner
+the `release` role may read, and a `controller` may change the state as well. On each
+request the app compares auth's hash of that list, kept 2 seconds, and asks for the
+person's roles again if it changed or after 5 minutes, so a role taken away counts at
+their next request. With no requests it asks nothing. If auth can't be reached, people
+it already vouched for keep reading, and changes are refused. **A deployment is for one owner.** Another owner
 runs its own, from the same image, with its own settings, sign-in, secrets and storage
 tenant, so neither can see the other.
 
@@ -33,10 +36,11 @@ tenant, so neither can see the other.
 | `RELEASE_OWNER` | The GitHub owner this deployment is for. Its state repository is `<owner>/release-state`, and its storage tenant `release-<owner>`. |
 | `RELEASE_READER_APP_INSTALLATION_ID` | The reader app's installation on that owner |
 | `RELEASE_READER_APP_ID`, `RELEASE_READER_APP_KEY` | The reader app, which reads `<owner>/release-state` |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | The sign-in client, which alone may read its hash of the access list |
 | `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
 | `RELEASE_STATE_WRITER_APP_ID`, `RELEASE_STATE_WRITER_APP_KEY`, `RELEASE_STATE_WRITER_INSTALLATION_ID` | The state writer app, which may write only to the state repository. Without them, the app only reads. |
 | `RELEASE_BOARD_WORKFLOW` | Optional: `owner/repository/file` of the public workflow that makes the board, for the board's "Last checked" |
-| `STORAGE_URL`, `PORT` | Optional: `https://storage.sustenaut.eu` and `8080` |
+| `AUTH_REALM_URL`, `STORAGE_URL`, `PORT` | Optional: `https://auth.sustenaut.eu/realms/team`, `https://storage.sustenaut.eu` and `8080` |
 
 ## What runs
 

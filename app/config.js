@@ -19,6 +19,9 @@ export function configFrom(env) {
       writerInstallation: writerInstallation ? installation("RELEASE_STATE_WRITER_INSTALLATION_ID", writerInstallation) : undefined,
       tenant: `release-${name.toLowerCase()}`,
     },
+    realmUrl: env.AUTH_REALM_URL ?? "https://auth.sustenaut.eu/realms/team",
+    clientId: need("OIDC_CLIENT_ID"),
+    clientSecret: need("OIDC_CLIENT_SECRET"),
     // Without these the app only reads.
     writerId: env.RELEASE_STATE_WRITER_APP_ID,
     writerKey: env.RELEASE_STATE_WRITER_APP_KEY,

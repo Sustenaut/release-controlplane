@@ -1,10 +1,11 @@
 # oauth2-proxy signs people in with the team realm at auth.sustenaut.eu, as the client
 # sustenaut.eu registered for its team sites (register-client.sh puts its id and secret
 # in the Secret release-oidc). It lets in only people holding the release role, which is
-# kept on auth's access page and arrives in the client's `access` claim; a role taken
-# away counts from the next refresh, within five minutes. It hands the app the account's
-# verified email in X-Forwarded-Email and its roles in X-Forwarded-Groups, replacing
-# whatever the browser sent. Open without sign-in: /healthz.
+# kept on auth's access page and arrives in the client's `access` claim. It hands the app
+# the account's verified email in X-Forwarded-Email and its access token in
+# X-Forwarded-Access-Token, replacing whatever the browser sent, and the app asks auth
+# with it, so a change on that page counts at the next request (app/access.js). The
+# refresh keeps the token good: they last 5 minutes. Open without sign-in: /healthz.
 apiVersion: v1
 kind: Service
 metadata:
@@ -48,7 +49,8 @@ spec:
             - --email-domain=*
             - --oidc-groups-claim=access
             - --allowed-group=release
-            - --cookie-refresh=5m
+            - --cookie-refresh=4m
+            - --pass-access-token=true
             - --pass-user-headers=true
             - --cookie-name=_release
             - --cookie-secure=true

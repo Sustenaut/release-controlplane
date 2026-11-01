@@ -10,6 +10,8 @@ import { lastRun } from "../runs.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
 import { escape } from "../render.js";
+import { accessCheck } from "../access.js";
+import { fakeAccess } from "./fake-access.js";
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -32,6 +34,7 @@ const SHA = "a".repeat(40);
 function fakes(overrides = {}) {
   return {
     owner: OWNER,
+    access: overrides.access ?? fakeAccess(),
     storage: { latest: async () => BOARD, log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
     github: {
       state: async () => STATE,
@@ -51,7 +54,7 @@ async function get(handle, path, email = "me@example.org", method = "GET", roles
   await new Promise((resolve) => server.once("listening", resolve));
   try {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-      method, headers: email ? { "X-Forwarded-Email": email, "X-Forwarded-Groups": roles } : {},
+      method, headers: email ? { "X-Forwarded-Email": email, "X-Forwarded-Access-Token": roles } : {},
     });
     return { status: response.status, text: await response.text(), headers: response.headers };
   } finally {
@@ -93,7 +96,7 @@ test("the history shows state changes in words, and the board's snapshots", asyn
 
 test("someone without the role gets in nowhere", async () => {
   const handle = handler(fakes());
-  for (const [email, roles] of [["stranger@example.org", "opportunity"], ["me@example.org", ""], ["", "release"]]) {
+  for (const [email, roles] of [["stranger@example.org", "opportunity"], ["", "release"]]) {
     const { status, text } = await get(handle, "/state", email, "GET", roles);
     assert.equal(status, 403);
     assert.ok(!text.includes("good"));
@@ -239,7 +242,7 @@ test("storage refusing is an error, not an empty board", async () => {
 });
 
 test("the config is for one owner, and needs everything", () => {
-  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
+  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
   assert.deepEqual(config.owner, { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
   assert.equal(config.storageUrl, "https://storage.sustenaut.eu");
@@ -287,10 +290,59 @@ test("the last run comes from the workflow named, with no token", async () => {
 test("reading takes the release role, by its exact name", async () => {
   const seen = async (roles, email = "me@example.org") => (await get(handler(fakes()), "/", email, "GET", roles)).status;
   assert.equal(await seen("release"), 200);
-  assert.equal(await seen("role:default-roles-team, opportunity,release"), 200);
+  assert.equal(await seen("opportunity,release"), 200);
   assert.equal(await seen("opportunity"), 403);
   assert.equal(await seen("controller"), 403);
   assert.equal(await seen("role:release"), 403);
   assert.equal(await seen("released"), 403);
-  assert.equal(await seen(""), 403);
+});
+
+function keycloakAnswers(answers, now = Date.now) {
+  return accessCheck({
+    realmUrl: "https://auth.test/r", clientId: "c", clientSecret: "s", role: "release", now,
+    request: async (url) => {
+      const { status, body } = answers(url);
+      if (status === 0) throw new Error("connection refused");
+      return { status, ok: status === 200, json: async () => body };
+    },
+  });
+}
+
+test("the page's answer to a sign-in that has ended: a read goes to sign in, a change is refused", async () => {
+  const access = keycloakAnswers((url) => (url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 401, body: {} }));
+  const handle = handler(fakes({ access }));
+  const server = createServer((req, res) => handle(req, res)).listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = { "X-Forwarded-Email": "me@example.org", "X-Forwarded-Access-Token": "t" };
+  try {
+    const read = await fetch(`${base}/state`, { headers, redirect: "manual" });
+    assert.equal(read.status, 302);
+    assert.equal(read.headers.get("location"), "/oauth2/start?rd=%2Fstate");
+    const change = await fetch(`${base}/state`, { method: "POST", headers, redirect: "manual" });
+    assert.equal(change.status, 403);
+    assert.match(await change.text(), /nothing was saved/);
+  } finally {
+    server.close();
+  }
+});
+
+test("with Keycloak down someone vouched for reads, without a form; anyone else gets a 503", async () => {
+  let down = false;
+  let time = 0;
+  const access = keycloakAnswers((url) => {
+    if (down) return { status: 0 };
+    return url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 200, body: { access: ["release", "controller"] } };
+  }, () => time);
+  const handle = handler({ ...fakes({ access }), save: { save: async () => { throw new Error("no save"); } } });
+  const owner = { ...OWNER, writerInstallation: "3" };
+  const withWriter = handler({ ...fakes({ access }), owner, save: { save: async () => { throw new Error("no save"); } } });
+  assert.match((await get(withWriter, "/state", "me@example.org", "GET", "t")).text, /<form/);
+  down = true;
+  time += 2_000;
+  const { status, text } = await get(withWriter, "/state", "me@example.org", "GET", "t");
+  assert.equal(status, 200);
+  assert.doesNotMatch(text, /<form/);
+  assert.equal((await get(withWriter, "/state", "me@example.org", "POST", "t")).status, 503);
+  assert.equal((await get(handle, "/state", "other@example.org", "GET", "t")).status, 503);
 });

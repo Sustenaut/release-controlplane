@@ -9,6 +9,7 @@ import { FormError, labelsOf, noteFrom, shaFrom, stateFrom } from "../forms.js";
 import { stateText, writer } from "../writer.js";
 import { reader } from "../github.js";
 import { configFrom } from "../config.js";
+import { fakeAccess } from "./fake-access.js";
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -27,6 +28,7 @@ function app(overrides = {}) {
   let reads = 0;
   const handle = handler({
     owner: overrides.owner ?? OWNER,
+    access: fakeAccess(),
     storage: { latest: async () => null, log: async () => [] },
     github: {
       stateFile: async () => { reads++; return { state: STATE, sha: SHA }; },
@@ -46,7 +48,7 @@ async function call(handle, path, { email = "op@x.org", method = "GET", body, or
   await new Promise((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const headers = { "X-Forwarded-Email": email, "X-Forwarded-Groups": ROLES[email] ?? "opportunity" };
+    const headers = { "X-Forwarded-Email": email, "X-Forwarded-Access-Token": ROLES[email] ?? "opportunity" };
     if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
     if (origin) headers.Origin = origin === "same" ? base : origin;
     const response = await fetch(base + path, { method, headers, body });
@@ -143,7 +145,7 @@ test("a form too large is refused", async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const answered = await fetch(`${base}/state`, {
-      method: "POST", headers: { "X-Forwarded-Email": "op@x.org", "X-Forwarded-Groups": ROLES["op@x.org"], Origin: base }, body: "x".repeat(300 * 1024),
+      method: "POST", headers: { "X-Forwarded-Email": "op@x.org", "X-Forwarded-Access-Token": ROLES["op@x.org"], Origin: base }, body: "x".repeat(300 * 1024),
     }).then((r) => r.status, () => "closed");
     assert.ok(answered === 400 || answered === "closed");
     assert.deepEqual(saved, []);
@@ -155,7 +157,7 @@ test("a form too large is refused", async () => {
 
 test("a failure saving is said, not thrown", async () => {
   const handle = handler({
-    owner: OWNER, storage: {},
+    owner: OWNER, access: fakeAccess(), storage: {},
     github: { stateFile: async () => ({ state: STATE, sha: SHA }), repositories: async () => ["good", "bad"] },
     save: { save: async () => { throw new Error("GitHub said 500"); } },
   });
@@ -271,7 +273,7 @@ test("the reader reads the file with its sha, and lists every page of repositori
 });
 
 test("the config takes a writer installation", () => {
-  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
+  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
   const config = configFrom(env);
   assert.equal(config.owner.writerInstallation, "2");
   assert.equal(config.writerId, "8");

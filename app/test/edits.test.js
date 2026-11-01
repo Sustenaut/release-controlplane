@@ -27,8 +27,6 @@ function app(overrides = {}) {
   let reads = 0;
   const handle = handler({
     owner: overrides.owner ?? OWNER,
-    team: ["op@x.org", "reader@x.org"],
-    operators: ["op@x.org"],
     storage: { latest: async () => null, log: async () => [] },
     github: {
       stateFile: async () => { reads++; return { state: STATE, sha: SHA }; },
@@ -41,12 +39,14 @@ function app(overrides = {}) {
   return { handle, saved, reads: () => reads };
 }
 
+const ROLES = { "op@x.org": "release,controller", "reader@x.org": "release" };
+
 async function call(handle, path, { email = "op@x.org", method = "GET", body, origin = "same" } = {}) {
   const server = createServer((req, res) => handle(req, res)).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const headers = { "X-Forwarded-Email": email };
+    const headers = { "X-Forwarded-Email": email, "X-Forwarded-Groups": ROLES[email] ?? "opportunity" };
     if (body) headers["Content-Type"] = "application/x-www-form-urlencoded";
     if (origin) headers.Origin = origin === "same" ? base : origin;
     const response = await fetch(base + path, { method, headers, body });
@@ -143,7 +143,7 @@ test("a form too large is refused", async () => {
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const answered = await fetch(`${base}/state`, {
-      method: "POST", headers: { "X-Forwarded-Email": "op@x.org", Origin: base }, body: "x".repeat(300 * 1024),
+      method: "POST", headers: { "X-Forwarded-Email": "op@x.org", "X-Forwarded-Groups": ROLES["op@x.org"], Origin: base }, body: "x".repeat(300 * 1024),
     }).then((r) => r.status, () => "closed");
     assert.ok(answered === 400 || answered === "closed");
     assert.deepEqual(saved, []);
@@ -155,7 +155,7 @@ test("a form too large is refused", async () => {
 
 test("a failure saving is said, not thrown", async () => {
   const handle = handler({
-    owner: OWNER, team: ["op@x.org"], operators: ["op@x.org"], storage: {},
+    owner: OWNER, storage: {},
     github: { stateFile: async () => ({ state: STATE, sha: SHA }), repositories: async () => ["good", "bad"] },
     save: { save: async () => { throw new Error("GitHub said 500"); } },
   });
@@ -270,13 +270,11 @@ test("the reader reads the file with its sha, and lists every page of repositori
   assert.ok(names.includes("last"));
 });
 
-test("the config takes a writer installation, and operators", () => {
-  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", TEAM: "t@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", OPERATORS: "OP@x.org", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
+test("the config takes a writer installation", () => {
+  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
   const config = configFrom(env);
   assert.equal(config.owner.writerInstallation, "2");
-  assert.deepEqual(config.operators, ["op@x.org"]);
   assert.equal(config.writerId, "8");
-  assert.deepEqual(configFrom({ ...env, OPERATORS: undefined }).operators, []);
   assert.equal(configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: undefined }).owner.writerInstallation, undefined);
   assert.throws(() => configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: "x" }), /must be a number/);
 });

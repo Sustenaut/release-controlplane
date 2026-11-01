@@ -32,7 +32,6 @@ const SHA = "a".repeat(40);
 function fakes(overrides = {}) {
   return {
     owner: OWNER,
-    team: ["me@example.org"],
     storage: { latest: async () => BOARD, log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
     github: {
       state: async () => STATE,
@@ -47,12 +46,12 @@ function fakes(overrides = {}) {
   };
 }
 
-async function get(handle, path, email = "me@example.org", method = "GET") {
+async function get(handle, path, email = "me@example.org", method = "GET", roles = "release") {
   const server = createServer((req, res) => handle(req, res)).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
   try {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-      method, headers: email ? { "X-Forwarded-Email": email } : {},
+      method, headers: email ? { "X-Forwarded-Email": email, "X-Forwarded-Groups": roles } : {},
     });
     return { status: response.status, text: await response.text(), headers: response.headers };
   } finally {
@@ -92,11 +91,10 @@ test("the history shows state changes in words, and the board's snapshots", asyn
   assert.ok(!text.includes("a".repeat(13)), "a snapshot's hash is shortened");
 });
 
-test("someone on no list gets in nowhere, and the check ignores case", async () => {
+test("someone without the role gets in nowhere", async () => {
   const handle = handler(fakes());
-  assert.equal((await get(handle, "/", "ME@example.org")).status, 200);
-  for (const email of ["stranger@example.org", ""]) {
-    const { status, text } = await get(handle, "/state", email);
+  for (const [email, roles] of [["stranger@example.org", "opportunity"], ["me@example.org", ""], ["", "release"]]) {
+    const { status, text } = await get(handle, "/state", email, "GET", roles);
     assert.equal(status, 403);
     assert.ok(!text.includes("good"));
   }
@@ -241,10 +239,9 @@ test("storage refusing is an error, not an empty board", async () => {
 });
 
 test("the config is for one owner, and needs everything", () => {
-  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", TEAM: "ME@x.org, you@x.org", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
+  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
   assert.deepEqual(config.owner, { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
-  assert.deepEqual(config.team, ["me@x.org", "you@x.org"]);
   assert.equal(config.storageUrl, "https://storage.sustenaut.eu");
   assert.equal(config.port, 8080);
   for (const name of Object.keys(env)) {
@@ -285,4 +282,15 @@ test("the last run comes from the workflow named, with no token", async () => {
   assert.equal(seen[0].init.headers.Authorization, undefined);
   assert.equal(await lastRun("o/r/b.yml", { fetch: async () => Response.json({ workflow_runs: [] }) })(), null);
   await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => new Response("", { status: 403 }) })(), /GitHub said 403/);
+});
+
+test("reading takes the release role, by its exact name", async () => {
+  const seen = async (roles, email = "me@example.org") => (await get(handler(fakes()), "/", email, "GET", roles)).status;
+  assert.equal(await seen("release"), 200);
+  assert.equal(await seen("role:default-roles-team, opportunity,release"), 200);
+  assert.equal(await seen("opportunity"), 403);
+  assert.equal(await seen("controller"), 403);
+  assert.equal(await seen("role:release"), 403);
+  assert.equal(await seen("released"), 403);
+  assert.equal(await seen(""), 403);
 });

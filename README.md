@@ -19,10 +19,12 @@ state repository that merges itself once `state / valid` passes, naming who aske
 the state has changed since the page was loaded, nothing is saved and it says to look
 again.
 
-It trusts the email oauth2-proxy puts in `X-Forwarded-Email`, so nothing but the
-proxy may reach it.
+It trusts the email and roles oauth2-proxy puts in `X-Forwarded-Email` and
+`X-Forwarded-Groups`, so nothing but the proxy may reach it.
 
-It checks that email against `TEAM`. **A deployment is for one owner.** Another owner
+Who may use it is kept on auth's [access page](https://auth.sustenaut.eu/realms/team/access):
+the `release` role may read, and a `controller` may change the state as well. A role
+taken away counts within five minutes. **A deployment is for one owner.** Another owner
 runs its own, from the same image, with its own settings, sign-in, secrets and storage
 tenant, so neither can see the other.
 
@@ -30,10 +32,8 @@ tenant, so neither can see the other.
 |---|---|
 | `RELEASE_OWNER` | The GitHub owner this deployment is for. Its state repository is `<owner>/release-state`, and its storage tenant `release-<owner>`. |
 | `RELEASE_READER_APP_INSTALLATION_ID` | The reader app's installation on that owner |
-| `TEAM` | The email addresses that may read it, separated by commas |
 | `RELEASE_READER_APP_ID`, `RELEASE_READER_APP_KEY` | The reader app, which reads `<owner>/release-state` |
 | `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
-| `OPERATORS` | The team's addresses that may change the state, separated by commas. Without it, nobody can. |
 | `RELEASE_STATE_WRITER_APP_ID`, `RELEASE_STATE_WRITER_APP_KEY`, `RELEASE_STATE_WRITER_INSTALLATION_ID` | The state writer app, which may write only to the state repository. Without them, the app only reads. |
 | `RELEASE_BOARD_WORKFLOW` | Optional: `owner/repository/file` of the public workflow that makes the board, for the board's "Last checked" |
 | `STORAGE_URL`, `PORT` | Optional: `https://storage.sustenaut.eu` and `8080` |

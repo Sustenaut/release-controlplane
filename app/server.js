@@ -1,10 +1,10 @@
 // The release control plane's app: one owner's board, state and history, and for its
 // operators, changing the state. A deployment is for one owner; another owner runs its
 // own, with its own settings, sign-in and storage, so neither can see the other. oauth2-proxy signs people in and
-// hands over their verified email in X-Forwarded-Email; nothing else can reach this
-// port (k8s network policy), and the team list here is a second check, so a mistake
-// there fails closed. A change is a form, checked to come from this site, that
-// becomes a pull request on the owner's state repository.
+// hands over their verified email in X-Forwarded-Email and their roles in
+// X-Forwarded-Groups; nothing else can reach this port (k8s network policy), and the
+// role is checked here too, so a mistake there fails closed. A change is a form, checked
+// to come from this site, that becomes a pull request on the owner's state repository.
 
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -18,6 +18,9 @@ import { changes } from "./history.js";
 import { boardPage, historyPage, refusedPage, resultPage, statePage } from "./render.js";
 
 const FRESH_MS = 60_000;
+// Who may do what is kept on auth's access page, and arrives as the `access` claim.
+const READER = "release";
+const OPERATOR = "controller";
 const FORM_BYTES = 256 * 1024;
 
 // What was read a moment ago. A failure isn't kept, so the next request tries again.
@@ -91,7 +94,7 @@ export function stateHistory(github) {
   };
 }
 
-export function handler({ owner, team, operators = [], github, storage, save, boardRun }) {
+export function handler({ owner, github, storage, save, boardRun }) {
   const checked = cached(boardRun ?? (async () => null));
   const latest = cached(() => storage.latest(owner));
   const state = cached(() => github.stateFile(owner));
@@ -137,8 +140,9 @@ export function handler({ owner, team, operators = [], github, storage, save, bo
     if (path === "/healthz") return send(200, "ok\n", "text/plain");
 
     const who = String(request.headers["x-forwarded-email"] ?? "").trim().toLowerCase();
-    if (!team.includes(who)) return send(403, refusedPage(who, owner));
-    const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && operators.includes(who);
+    const roles = String(request.headers["x-forwarded-groups"] ?? "").split(",").map((role) => role.trim());
+    if (!who || !roles.includes(READER)) return send(403, refusedPage(who, owner));
+    const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && roles.includes(OPERATOR);
 
     if (request.method === "POST") {
       const route = path.match(/^\/state(?:\/revert\/([0-9a-f]{40}))?$/);
@@ -175,7 +179,7 @@ export function handler({ owner, team, operators = [], github, storage, save, bo
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
   const save = config.writerId && config.writerKey ? writer(config) : null;
-  const handle = handler({ owner: config.owner, team: config.team, operators: config.operators, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
+  const handle = handler({ owner: config.owner, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

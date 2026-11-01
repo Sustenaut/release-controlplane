@@ -11,7 +11,6 @@ export function configFrom(env) {
     if (!/^\d+$/.test(value)) throw new Error(`${key} must be a number`);
     return value;
   };
-  const emails = (text) => text.split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
   const writerInstallation = env.RELEASE_STATE_WRITER_INSTALLATION_ID;
   return {
     owner: {
@@ -20,9 +19,7 @@ export function configFrom(env) {
       writerInstallation: writerInstallation ? installation("RELEASE_STATE_WRITER_INSTALLATION_ID", writerInstallation) : undefined,
       tenant: `release-${name.toLowerCase()}`,
     },
-    team: emails(need("TEAM")),
     // Without these the app only reads.
-    operators: emails(env.OPERATORS ?? ""),
     writerId: env.RELEASE_STATE_WRITER_APP_ID,
     writerKey: env.RELEASE_STATE_WRITER_APP_KEY,
     appId: need("RELEASE_READER_APP_ID"),

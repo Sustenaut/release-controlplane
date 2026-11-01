@@ -13,7 +13,7 @@ import { reader } from "./github.js";
 import { boards } from "./storage.js";
 import { lastRun } from "./runs.js";
 import { writer } from "./writer.js";
-import { FormError, noteFrom, shaFrom, stateFrom } from "./forms.js";
+import { FormError, noteFrom, protectOn, shaFrom, stateFrom } from "./forms.js";
 import { changes } from "./history.js";
 import { boardPage, historyPage, refusedPage, resultPage, statePage } from "./render.js";
 
@@ -141,14 +141,16 @@ export function handler({ owner, team, operators = [], github, storage, save, bo
     const canEdit = Boolean(save) && Boolean(owner.writerInstallation) && operators.includes(who);
 
     if (request.method === "POST") {
-      const route = path.match(/^\/state(?:\/revert\/([0-9a-f]{40}))?$/);
+      const route = path.match(/^\/state(?:\/revert\/([0-9a-f]{40})|\/(turn-on))?$/);
       if (!route) return send(404, "Not found.\n", "text/plain");
       if (!canEdit) return send(403, resultPage(who, "Not allowed", "Only an operator can change the state.", null, owner));
       if (!fromThisSite(request)) return send(403, resultPage(who, "Not allowed", "That form didn't come from this site.", null, owner));
       try {
         const makeState = route[1]
           ? async () => github.state(owner, route[1])
-          : async (form, current) => stateFrom(form, current.state, await visible());
+          : route[2]
+            ? async (form, current) => protectOn(form, current.state)
+            : async (form, current) => stateFrom(form, current.state, await visible());
         return send(...answerPage(await change(request, who, makeState), who));
       } catch (error) {
         if (error instanceof FormError) return send(400, resultPage(who, "That didn't save", error.message, null, owner));
@@ -165,7 +167,7 @@ export function handler({ owner, team, operators = [], github, storage, save, bo
       }));
       return out;
     };
-    if (path === "/") return send(200, boardPage(await read({ result: latest, checked }), who));
+    if (path === "/") return send(200, boardPage(await read({ result: latest, checked, ...(canEdit ? { current: state } : {}) }), who));
     if (path === "/state") return send(200, statePage(await read({ result: state, ...(canEdit ? { visible } : {}) }), who, canEdit));
     if (path === "/history") return send(200, historyPage(await read({ commits: stateCommits, log, ...(canEdit ? { result: state } : {}) }), who, canEdit));
     return send(404, "Not found.\n", "text/plain");

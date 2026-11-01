@@ -91,6 +91,7 @@
     }
   ],
   "own_hosts": [
+    "schryer.eu",
     "sustenaut.eu"
   ],
   "other_secrets": [

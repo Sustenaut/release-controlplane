@@ -1,6 +1,5 @@
 # Every night, for each owner: pubkit's nightly on what its state.json governs.
-# 02:41 UTC, an hour after pubkit's own schedule while the two run side by side,
-# since both keep the same one pull request in each repository.
+# 02:41 UTC. pubkit's own schedule is gone, so this is the only one that runs it.
 name: nightly
 
 on:
@@ -47,7 +46,7 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@3be82ab1f48f539f0e7cd8c37893e76cacf2593c # v0.24.3
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
@@ -58,7 +57,7 @@ jobs:
   schryer:
     needs: plan
     if: needs.plan.outputs.schryer != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@3be82ab1f48f539f0e7cd8c37893e76cacf2593c # v0.24.3
     with: { repos: '${{ needs.plan.outputs.schryer }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'

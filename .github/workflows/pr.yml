@@ -12,20 +12,27 @@ permissions:
 jobs:
   checks:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@3be82ab1f48f539f0e7cd8c37893e76cacf2593c # v0.24.3
     with: {"shellcheck": "with-secrets push-secrets.sh register-client.sh"}
 
   tests:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@2edf28ec3cc49866fe505d783ed811bcfb16f432 # v0.23.2
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@3be82ab1f48f539f0e7cd8c37893e76cacf2593c # v0.24.3
     with: {"setup": "make venv node", "test": "make functional"}
+
+  sonar:
+    name: ci
+    needs: [tests]
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@3be82ab1f48f539f0e7cd8c37893e76cacf2593c # v0.24.3
+    with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info"}
+    secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 
   # The one check a ruleset requires: it passes only when every job
   # above succeeded. None of them is ever skipped for not being asked for.
   passed:
     name: ci / passed
     if: always()
-    needs: [checks, tests]
+    needs: [checks, tests, sonar]
     runs-on: ubuntu-latest
     steps:
       - run: |

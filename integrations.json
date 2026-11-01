@@ -70,7 +70,9 @@
     {
       "plugin": "sonarcloud.scan",
       "paths": [
-        ".github/workflows/hourly-board.yml"
+        ".github/workflows/hourly-board.yml",
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
       ],
       "mode": "required"
     },

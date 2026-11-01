@@ -17,10 +17,10 @@
 #   ssh root@sustenaut k3s kubectl -n release rollout restart deployment/app deployment/oauth2-proxy
 set -euo pipefail
 root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-# Terraform outputs come from business-plan's infra/: a checkout of it beside this one,
-# or BUSINESS_PLAN=its path.
-infra="${BUSINESS_PLAN:-$root/../business-plan}/infra"
-[ -d "$infra" ] || { echo "no business-plan checkout at ${infra%/infra}: clone it beside this repository or set BUSINESS_PLAN" >&2; exit 1; }
+# Terraform outputs come from shared-infra's infra/: a checkout of it beside this one,
+# or SHARED_INFRA=its path.
+infra="${SHARED_INFRA:-$root/../shared-infra}/infra"
+[ -d "$infra" ] || { echo "no shared-infra checkout at ${infra%/infra}: clone it beside this repository or set SHARED_INFRA" >&2; exit 1; }
 
 for name in GITHUB_RELEASE_READER_ID GITHUB_RELEASE_READER_KEY GITHUB_RELEASE_READER_INSTALLATION_ID \
   GITHUB_RELEASE_WRITER_ID GITHUB_RELEASE_WRITER_KEY GITHUB_RELEASE_WRITER_INSTALLATION_ID RELEASE_COOKIE_SECRET; do

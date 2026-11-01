@@ -59,6 +59,8 @@ jobs:
           kustomize edit set image "${IMAGE}=${IMAGE}:${GITHUB_SHA}"
           kustomize build . > "${RUNNER_TEMP}/release.yaml"
           grep -q "${IMAGE}:${GITHUB_SHA}" "${RUNNER_TEMP}/release.yaml"
+          kustomize build ../k8s-schryer > "${RUNNER_TEMP}/release-schryer.yaml"
+          grep -q "${IMAGE}:${GITHUB_SHA}" "${RUNNER_TEMP}/release-schryer.yaml"
 
       - name: Join Sustenaut's tailnet
         if: vars.SUSTENAUT_SERVER != ''
@@ -74,8 +76,13 @@ jobs:
           DEPLOY_KEY: '${{ secrets.SUSTENAUT_DEPLOY_SSH_KEY }}'
           KNOWN_HOSTS: '${{ vars.SUSTENAUT_KNOWN_HOSTS }}'
           SERVER: '${{ vars.SUSTENAUT_SERVER }}'
+          DEPLOY_SCHRYER: '${{ vars.DEPLOY_SCHRYER }}'
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes "deploy@${SERVER}" release < "${RUNNER_TEMP}/release.yaml"
+          # Once its namespace and Secrets are on the server.
+          if [ "$DEPLOY_SCHRYER" = on ]; then
+            ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes "deploy@${SERVER}" release-schryer < "${RUNNER_TEMP}/release-schryer.yaml"
+          fi

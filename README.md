@@ -39,6 +39,7 @@ tenant, so neither can see the other.
 | `RELEASE_READER_APP_INSTALLATION_ID` | The reader app's installation on that owner |
 | `RELEASE_READER_APP_ID`, `RELEASE_READER_APP_KEY` | The reader app, which reads `<owner>/release-state` |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | The sign-in client, which alone may read its hash of the access list |
+| `ALLOWED_EMAILS` | Instead of those, for a realm with no access page: the addresses that may read and change the state, separated by commas |
 | `STORAGE_TOKEN_FILE` | The pod's projected token for storage, read on each request |
 | `RELEASE_STATE_WRITER_APP_ID`, `RELEASE_STATE_WRITER_APP_KEY`, `RELEASE_STATE_WRITER_INSTALLATION_ID` | The state writer app, which may write only to the state repository. Without them, the app only reads. |
 | `RELEASE_BOARD_WORKFLOW` | Optional: `owner/repository/file` of the public workflow that makes the board, for the board's "Last checked" |

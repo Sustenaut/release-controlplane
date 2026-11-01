@@ -11,6 +11,7 @@ export function configFrom(env) {
     if (!/^\d+$/.test(value)) throw new Error(`${key} must be a number`);
     return value;
   };
+  const emails = (env.ALLOWED_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
   const writerInstallation = env.RELEASE_STATE_WRITER_INSTALLATION_ID;
   return {
     owner: {
@@ -20,8 +21,10 @@ export function configFrom(env) {
       tenant: `release-${name.toLowerCase()}`,
     },
     realmUrl: env.AUTH_REALM_URL ?? "https://auth.sustenaut.eu/realms/team",
-    clientId: need("OIDC_CLIENT_ID"),
-    clientSecret: need("OIDC_CLIENT_SECRET"),
+    // With a list of who may use it, the sign-in client's access list isn't asked.
+    allowedEmails: emails,
+    clientId: emails.length ? undefined : need("OIDC_CLIENT_ID"),
+    clientSecret: emails.length ? undefined : need("OIDC_CLIENT_SECRET"),
     // Without these the app only reads.
     writerId: env.RELEASE_STATE_WRITER_APP_ID,
     writerKey: env.RELEASE_STATE_WRITER_APP_KEY,

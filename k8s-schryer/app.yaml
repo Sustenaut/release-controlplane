@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: RELEASE_OWNER
+              value: schryer
+            - name: RELEASE_BOARD_WORKFLOW
+              value: schryer/release-controlplane/hourly-board.yml
+            - name: ALLOWED_EMAILS
+              valueFrom: { secretKeyRef: { name: release-secrets, key: allowed-emails } }
+            - { name: OIDC_CLIENT_ID, $patch: delete }
+            - { name: OIDC_CLIENT_SECRET, $patch: delete }

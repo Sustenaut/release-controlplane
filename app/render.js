@@ -63,15 +63,29 @@ function page(title, active, who, body, owner) {
 
 const dot = (letter) => `<span class="dot ${escape(letter)}">${escape(letter)}</span>`;
 
-function grade(name, found) {
+// For an operator, where a repository's secret scanning or push protection is off: what
+// fixes it. protect turns them on, and nothing here turns them off.
+function secretFix(row, current) {
+  if (!current?.value) return "";
+  const off = row.grades?.security?.steps?.some((s) => s.delta < 0 && s.facts?.includes("secret_protection"));
+  const name = row.repo.split("/").pop();
+  const listed = current.value.state.repos[name];
+  if (!off || !listed) return "";
+  if (listed.protect) return '<p class="meta">Protect is on, so the next apply turns these on.</p>';
+  return `<p class="meta">Protect turns these on, and sets this repository's rulesets too.</p>
+<form method="post" action="/state/turn-on"><input type="hidden" name="base" value="${escape(current.value.sha)}"><input type="hidden" name="repo" value="${escape(name)}">
+<input type="hidden" name="note" value="${escape(`Turn on protect for ${name}: secret scanning or push protection is off`)}"><button>Turn on</button></form>`;
+}
+
+function grade(name, found, fix = "") {
   if (!found) return "<td>·</td>";
   const steps = [found.start, ...(found.steps ?? [])].filter(Boolean)
     .map((step) => `<li>${escape(step.text)}</li>`).join("");
-  return `<td><details><summary aria-label="${name} ${escape(found.letter)}">${dot(found.letter)}</summary><ul>${steps}</ul></details></td>`;
+  return `<td><details><summary aria-label="${name} ${escape(found.letter)}">${dot(found.letter)}</summary><ul>${steps}</ul>${fix}</details></td>`;
 }
 
-function boardRow(row) {
-  const grades = CATEGORIES.map(([key, label]) => grade(label, row.grades?.[key])).join("");
+function boardRow(row, current) {
+  const grades = CATEGORIES.map(([key, label]) => grade(label, row.grades?.[key], key === "security" ? secretFix(row, current) : "")).join("");
   const privately = row.visibility === "private" ? ' <span class="tag">private</span>' : "";
   return `<tr><td class="mono">${escape(row.repo)}${privately} <span class="tag">${escape(row.kind)}</span></td>
 <td>${dot(row.overall)}</td><td class="mono">${escape(row.released)}</td><td class="mono">${escape(row.pubkit)}</td>${grades}</tr>`;
@@ -99,7 +113,7 @@ function lastChecked(checked) {
   return `<p class="meta">Last checked <a href="${escape(url)}">${escape(time)}</a>.${went}</p>`;
 }
 
-export function boardPage({ owner, result, checked }, who) {
+export function boardPage({ owner, result, checked, current }, who) {
   let body;
   if (result.error) body = failed(result);
   else if (!result.value) body = '<p class="meta">No board yet. The hourly run makes the first.</p>';
@@ -108,7 +122,7 @@ export function boardPage({ owner, result, checked }, who) {
     const problems = (board.problems ?? []).map((p) => `<p class="problem">${escape(p)}</p>`).join("");
     const groups = byProject(board.repos ?? []).map(([project, rows]) => `<h3>${escape(project)}</h3><div class="wrap"><table>
 <thead><tr><th>Repository</th><th>Overall</th><th>Released</th><th>pubkit</th><th>Quality</th><th>Security</th><th>Delivery</th></tr></thead>
-<tbody>${[...rows].sort(worstFirst).map(boardRow).join("")}</tbody></table></div>`).join("");
+<tbody>${[...rows].sort(worstFirst).map((row) => boardRow(row, current)).join("")}</tbody></table></div>`).join("");
     body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
   }
   return page("Board", "Board", who, `<h1>Board</h1><section>${lastChecked(checked)}${body}</section>`, owner);

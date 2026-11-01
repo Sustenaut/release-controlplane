@@ -16,6 +16,13 @@ export function noteFrom(form) {
   return note;
 }
 
+// The board's "Turn on": this one repository's protect, and nothing else.
+export function protectOn(form, current) {
+  const name = form.get("repo") ?? "";
+  if (!Object.hasOwn(current.repos, name)) throw new FormError(`${name} isn't in the state.`);
+  return { ...current, repos: { ...current.repos, [name]: { ...current.repos[name], protect: true } } };
+}
+
 export function shaFrom(form) {
   const sha = form.get("base") ?? "";
   if (!/^[0-9a-f]{40}$/.test(sha)) throw new FormError("The form is missing what it was read from. Reload the page.");

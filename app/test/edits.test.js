@@ -29,9 +29,9 @@ function app(overrides = {}) {
     owner: overrides.owner ?? OWNER,
     team: ["op@x.org", "reader@x.org"],
     operators: ["op@x.org"],
-    storage: { latest: async () => null, log: async () => [] },
+    storage: { latest: async () => overrides.board ?? null, log: async () => [] },
     github: {
-      stateFile: async () => { reads++; return { state: STATE, sha: SHA }; },
+      stateFile: async () => { reads++; return { state: overrides.state ?? STATE, sha: SHA }; },
       state: async (_, ref) => (ref === COMMIT ? OLD : STATE),
       repositories: async () => ["bad", "good", "unlisted"],
       commits: async () => [{ sha: "d".repeat(40), message: "New", author: "a", time: "t" }, { sha: COMMIT, message: "Old", author: "a", time: "t" }],
@@ -279,4 +279,50 @@ test("the config takes a writer installation, and operators", () => {
   assert.deepEqual(configFrom({ ...env, OPERATORS: undefined }).operators, []);
   assert.equal(configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: undefined }).owner.writerInstallation, undefined);
   assert.throws(() => configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: "x" }), /must be a number/);
+});
+
+const secretsOff = (repo) => ({ repo, kind: "package", overall: "B", grades: { security: { letter: "B", steps: [
+  { text: "push protection off", delta: -1, facts: ["secret_protection"] }] } } });
+const OFF_BOARD = { summary: "s", repos: [secretsOff("example-org/good"), secretsOff("example-org/bad")] };
+const OFF_STATE = { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles({ protect: false }) } };
+
+test("an operator sees what fixes secret scanning: a button, or the next apply", async () => {
+  const { handle } = app({ board: OFF_BOARD, state: OFF_STATE });
+  const { text } = await call(handle, "/");
+  assert.equal(text.match(/action="\/state\/turn-on"/g).length, 1);
+  assert.match(text, /name="repo" value="bad"/);
+  assert.match(text, /Protect is on, so the next apply turns these on/);
+});
+
+test("a reader sees the notch, and no way to fix it", async () => {
+  const { handle } = app({ board: OFF_BOARD, state: OFF_STATE });
+  const { text } = await call(handle, "/", { email: "reader@x.org" });
+  assert.match(text, /push protection off/);
+  assert.doesNotMatch(text, /turn-on|next apply/);
+});
+
+test("nothing to fix shows no button", async () => {
+  const board = { summary: "s", repos: [{ repo: "example-org/bad", kind: "package", overall: "A", grades: { security: { letter: "A", steps: [
+    { text: "Secret scanning settings: not available", delta: 0, facts: ["secret_protection"] }] } } }] };
+  const { text } = await call(app({ board, state: OFF_STATE }).handle, "/");
+  assert.doesNotMatch(text, /turn-on|next apply/);
+});
+
+test("Turn on saves that repository's protect, and nothing else", async () => {
+  const { handle, saved } = app({ state: OFF_STATE });
+  const body = form([["base", SHA], ["note", "Turn on"], ["repo", "bad"]]);
+  assert.equal((await post(handle, "/state/turn-on", { body })).status, 200);
+  assert.deepEqual(saved[0].state, { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles() } });
+  assert.equal(saved[0].sha, SHA);
+  assert.equal(saved[0].note, "Turn on");
+});
+
+test("Turn on refuses a repository not in the state, a reader, and another site", async () => {
+  const { handle, saved } = app({ state: OFF_STATE });
+  const body = (repo) => form([["base", SHA], ["note", "Turn on"], ["repo", repo]]);
+  assert.equal((await post(handle, "/state/turn-on", { body: body("unlisted") })).status, 400);
+  assert.equal((await post(handle, "/state/turn-on", { body: body("__proto__") })).status, 400);
+  assert.equal((await post(handle, "/state/turn-on", { email: "reader@x.org", body: body("bad") })).status, 403);
+  assert.equal((await post(handle, "/state/turn-on", { origin: "https://evil.example", body: body("bad") })).status, 403);
+  assert.equal(saved.length, 0);
 });

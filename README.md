@@ -14,7 +14,9 @@ from a list of the labels in use, or adds one with "New label". It changes nothi
 else.
 
 An operator changes the state on the state page, or goes back to an earlier one on
-the history page. Each change needs a note, and becomes a pull request on the
+the history page. Where the board says secret scanning or push protection is off, its
+security breakdown offers a "Turn on" button if the repository's protect is off, and
+otherwise says the next apply will do it. Nothing here turns them off. Each change needs a note, and becomes a pull request on the
 state repository that merges itself once `state / valid` passes, naming who asked. If
 the state has changed since the page was loaded, nothing is saved and it says to look
 again.

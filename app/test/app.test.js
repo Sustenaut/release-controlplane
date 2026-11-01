@@ -346,3 +346,11 @@ test("with Keycloak down someone vouched for reads, without a form; anyone else 
   assert.equal((await get(withWriter, "/state", "me@example.org", "POST", "t")).status, 503);
   assert.equal((await get(handle, "/state", "other@example.org", "GET", "t")).status, 503);
 });
+
+test("with an email list the config needs no sign-in client", () => {
+  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", ALLOWED_EMAILS: " Me@x.org, ", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
+  const config = configFrom(env);
+  assert.deepEqual(config.allowedEmails, ["me@x.org"]);
+  assert.equal(config.clientId, undefined);
+  assert.throws(() => configFrom({ ...env, ALLOWED_EMAILS: "" }), /OIDC_CLIENT_ID is not set/);
+});

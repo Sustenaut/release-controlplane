@@ -1,7 +1,7 @@
 // The access check against auth's contract, with Keycloak answered here.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accessCheck, DEGRADED, NO_ROLE, OK, SIGN_IN, UNAVAILABLE } from "../access.js";
+import { accessCheck, DEGRADED, emailAccess, NO_ROLE, OK, SIGN_IN, UNAVAILABLE } from "../access.js";
 
 function keycloak() {
   const k = { hash: "h1", roles: ["release"], hashes: 0, userinfos: 0, hashStatus: 200, userinfoStatus: 200, down: false, time: 0 };
@@ -137,4 +137,16 @@ test("it remembers at most so many people", async () => {
   await small("b@x.org", "t");
   await small("a@x.org", "t");
   assert.equal(k.userinfos, 3);
+});
+
+test("an email list lets those on it do everything, and asks nobody", async () => {
+  const check = emailAccess(["a@x.org"], ["release", "controller"]);
+  const on = await check("a@x.org");
+  assert.equal(on.allowed, true);
+  assert.equal(on.reason, OK);
+  assert.equal(on.roles.has("controller"), true);
+  const off = await check("b@x.org");
+  assert.equal(off.allowed, false);
+  assert.equal(off.reason, NO_ROLE);
+  assert.equal(off.roles.size, 0);
 });

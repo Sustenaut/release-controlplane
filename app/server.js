@@ -9,7 +9,7 @@
 
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
-import { accessCheck, DEGRADED, SIGN_IN, UNAVAILABLE } from "./access.js";
+import { accessCheck, DEGRADED, emailAccess, SIGN_IN, UNAVAILABLE } from "./access.js";
 import { configFrom } from "./config.js";
 import { reader } from "./github.js";
 import { boards } from "./storage.js";
@@ -191,7 +191,9 @@ export function handler({ owner, access, github, storage, save, boardRun }) {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
   const save = config.writerId && config.writerKey ? writer(config) : null;
-  const access = accessCheck({ realmUrl: config.realmUrl, clientId: config.clientId, clientSecret: config.clientSecret, role: READER });
+  const access = config.allowedEmails.length
+    ? emailAccess(config.allowedEmails, [READER, OPERATOR])
+    : accessCheck({ realmUrl: config.realmUrl, clientId: config.clientId, clientSecret: config.clientSecret, role: READER });
   const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {

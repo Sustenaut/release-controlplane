@@ -1,0 +1,17 @@
+# schryer's deployment of the same app, at release.schryer.eu, in namespace
+# release-schryer: its own settings, sign-in, Secrets and storage tenant, so it and
+# Sustenaut's can't see each other. It signs in with the family realm, as the client
+# schryer.eu, which has no access page, so an email list says who may use it.
+# Its Secrets come from schryer/release-controlplane's push-secrets.sh and register-client.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: release-schryer
+resources:
+  - ../k8s
+patches:
+  - path: app.yaml
+  - path: oauth2-proxy.yaml
+  - target: { kind: Ingress, name: release }
+    patch: |
+      - { op: replace, path: /spec/rules/0/host, value: release.schryer.eu }
+      - { op: replace, path: /spec/tls/0/hosts/0, value: release.schryer.eu }

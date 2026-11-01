@@ -14,6 +14,14 @@ export const NO_ROLE = "no_role"; // signed in, without the role
 export const SIGN_IN = "sign_in"; // the session has ended, or the account was removed
 export const UNAVAILABLE = "unavailable"; // Keycloak can't be reached, and this can't be vouched for
 
+// Where the realm has no access list: these addresses may do everything, and anyone else
+// nothing. The proxy has the same list, so this is its second check.
+export function emailAccess(emails, roles) {
+  return async function check(person) {
+    return emails.includes(person) ? { allowed: true, reason: OK, roles: new Set(roles) } : { allowed: false, reason: NO_ROLE, roles: new Set() };
+  };
+}
+
 export function accessCheck({ realmUrl, clientId, clientSecret, role, hashFor = 2_000, fullEvery = 300_000, maxPeople = 1000, timeout = 3_000, now = Date.now, request = fetch }) {
   const realm = realmUrl.replace(/\/$/, "");
   const people = new Map();

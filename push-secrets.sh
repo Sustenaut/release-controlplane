@@ -48,10 +48,6 @@ fi
 
 # SSH reaches the server over Sustenaut's tailnet only (be signed in to it).
 server=$(terraform -chdir="$infra" output -json sustenaut_server | jq -r .ssh_host)
-site=$(terraform -chdir="$infra" output -json opportunity)
-team=$(jq -r '.team | join(",")' <<<"$site")
-team_emails=$(jq -r '.team[]' <<<"$site")
-owner=$(jq -r .owner <<<"$site")
 b64() { printf '%s' "$1" | base64 -w0; }
 
 # shellcheck disable=SC2087 # expanded here on purpose: the values go in the SSH stream
@@ -70,9 +66,6 @@ data:
   writer-app-key: $(b64 "$GITHUB_RELEASE_WRITER_KEY")
   writer-installation-id: $(b64 "$GITHUB_RELEASE_WRITER_INSTALLATION_ID")
   cookie-secret: $(b64 "$RELEASE_COOKIE_SECRET")
-  team: $(b64 "$team")
-  team-emails: $(b64 "$team_emails")
-  operators: $(b64 "$owner")
 ---
 $(cat "$root/k8s/admin/network-policy.yaml")
 YAML

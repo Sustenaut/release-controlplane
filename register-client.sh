@@ -59,8 +59,8 @@ data:
   client-id: {b64(client["client_id"])}
   client-secret: {b64(client["client_secret"])}""")
 PY
-    echo "If it changed, restart oauth2-proxy:"
-    echo "  ssh root@$server k3s kubectl -n release rollout restart deployment/oauth2-proxy"
+    echo "If it changed, restart oauth2-proxy and the app:"
+    echo "  ssh root@$server k3s kubectl -n release rollout restart deployment/oauth2-proxy deployment/app"
     ;;
   waiting)
     value="$(jq -r .record.value <<<"$registration")"

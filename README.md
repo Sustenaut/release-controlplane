@@ -1,8 +1,9 @@
 # release-controlplane
 
 The software that runs the release control plane. The roles of each repository
-live in the state repositories, `Sustenaut/release-state` and
-`schryer/release-state`; board snapshots live in storage. See the
+live in the state repository, `Sustenaut/release-state`; board snapshots live in storage.
+`k8s-schryer/` deploys the same app for schryer, whose own board, state and apps are in
+`schryer/release-controlplane` and `schryer/release-state`. See the
 [design](https://claude.ai/artifact/KGAd5vKckHCWbrKQCKMhSV).
 
 ## The app

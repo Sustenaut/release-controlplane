@@ -12,18 +12,18 @@ permissions:
 jobs:
   checks:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@2c986f9ce17ac43e22b951a9da209c592475bb05 # v0.25.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@15d51b4568e7f5782f5f394b9f5d629464c4a288 # v0.26.1
     with: {"shellcheck": "with-secrets push-secrets.sh register-client.sh"}
 
   tests:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@2c986f9ce17ac43e22b951a9da209c592475bb05 # v0.25.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@15d51b4568e7f5782f5f394b9f5d629464c4a288 # v0.26.1
     with: {"setup": "make venv node", "test": "make functional"}
 
   sonar:
     name: ci
     needs: [tests]
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@2c986f9ce17ac43e22b951a9da209c592475bb05 # v0.25.0
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@15d51b4568e7f5782f5f394b9f5d629464c4a288 # v0.26.1
     with: {"reports": "sonar.python.coverage.reportPaths=*.xml sonar.javascript.lcov.reportPaths=lcov.info"}
     secrets: { SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}' }
 

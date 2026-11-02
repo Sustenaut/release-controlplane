@@ -1,8 +1,9 @@
 # release-controlplane
 
 The software that runs the release control plane. The roles of each repository
-live in the state repositories, `Sustenaut/release-state` and
-`schryer/release-state`; board snapshots live in storage. See the
+live in the state repository, `Sustenaut/release-state`; board snapshots live in storage.
+`k8s-schryer/` deploys the same app for schryer, whose own board, state and apps are in
+`schryer/release-controlplane` and `schryer/release-state`. See the
 [design](https://claude.ai/artifact/KGAd5vKckHCWbrKQCKMhSV).
 
 ## The app
@@ -47,13 +48,13 @@ tenant, so neither can see the other.
 
 ## What runs
 
-- **`hourly-board.yml`**, each hour for each owner: reads its `state.json` with the
+- **`hourly-board.yml`**, each hour: reads Sustenaut's `state.json` with the
   reader app, grades what it puts on the board with `pubkit board`, and keeps
   `board.json` in the storage tenant `release-<owner>` if a fact or a grade changed
   (`scripts/publish-board.py`), moving the `board` head. This repository is public
   and a state file may name private repositories, so this workflow's logs print no
   repository's name and it uploads no artifact.
-- **`fleet-nightly.yml`**, each night for each owner: pubkit's reusable nightly on
+- **`fleet-nightly.yml`**, each night: pubkit's reusable nightly on
   what its `state.json` governs. It needs the nightly app's `NIGHTLY_APP_ID` variable
   and `NIGHTLY_APP_KEY` secret, and the secrets `SUSTENAUT_SLACK_BOT_TOKEN` and
   `SLACK_DM_USER_ID`, here.

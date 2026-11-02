@@ -1,4 +1,4 @@
-# Every hour, for each owner: grade what its state.json puts on the board with
+# Every hour: grade what Sustenaut's state.json puts on the board with
 # pubkit, and keep the result in storage if a fact or a grade changed. This
 # repository is public and the state may name private repositories, so this job
 # keeps its logs quiet and uploads no artifact: the board goes only to storage.
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        owner: [Sustenaut, schryer]
+        owner: [Sustenaut]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with: { persist-credentials: false }

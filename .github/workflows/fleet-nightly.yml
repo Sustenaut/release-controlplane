@@ -1,4 +1,4 @@
-# Every night, for each owner: pubkit's nightly on what its state.json governs.
+# Every night: pubkit's nightly on what Sustenaut's state.json governs.
 # 02:41 UTC. pubkit's own schedule is gone, so this is the only one that runs it.
 name: nightly
 
@@ -15,7 +15,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       Sustenaut: ${{ steps.plan.outputs.Sustenaut }}
-      schryer: ${{ steps.plan.outputs.schryer }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with: { persist-credentials: false }
@@ -25,12 +24,6 @@ jobs:
           app-id: '${{ vars.RELEASE_READER_APP_ID }}'
           private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
           owner: Sustenaut
-      - id: schryer
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: '${{ vars.RELEASE_READER_APP_ID }}'
-          private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
-          owner: schryer
       - id: plan
         run: |
           governed() {
@@ -38,27 +31,14 @@ jobs:
               scripts/repos-from-state.py govern
           }
           echo "Sustenaut=$(governed Sustenaut "$SUSTENAUT_TOKEN")" >> "$GITHUB_OUTPUT"
-          echo "schryer=$(governed schryer "$SCHRYER_TOKEN")" >> "$GITHUB_OUTPUT"
         env:
           SUSTENAUT_TOKEN: '${{ steps.sustenaut.outputs.token }}'
-          SCHRYER_TOKEN: '${{ steps.schryer.outputs.token }}'
 
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
     uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2c986f9ce17ac43e22b951a9da209c592475bb05 # v0.25.0
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
-    secrets:
-      app-id: '${{ vars.NIGHTLY_APP_ID }}'
-      app-key: '${{ secrets.NIGHTLY_APP_KEY }}'
-      notify-token: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
-      notify-user: '${{ secrets.SLACK_DM_USER_ID }}'
-
-  schryer:
-    needs: plan
-    if: needs.plan.outputs.schryer != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@2c986f9ce17ac43e22b951a9da209c592475bb05 # v0.25.0
-    with: { repos: '${{ needs.plan.outputs.schryer }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
       app-key: '${{ secrets.NIGHTLY_APP_KEY }}'

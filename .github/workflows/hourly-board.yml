@@ -40,7 +40,7 @@ jobs:
       - name: Grade the owner's repositories
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' "repos/$OWNER/release-state/contents/state.json" > state.json
-          scripts/repos-from-state.py board < state.json > repos.json
+          pubkit state --repos-for board state.json > repos.json
           pubkit board --out site --repos repos.json > /dev/null
         env:
           OWNER: '${{ matrix.owner }}'
@@ -48,5 +48,4 @@ jobs:
           GITHUB_TOKEN: '${{ steps.app.outputs.token }}'
           SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}'
       - name: Keep it in storage, if it changed
-        run: scripts/publish-board.py "$OWNER"
-        env: { OWNER: '${{ matrix.owner }}' }
+        run: pubkit board-publish --url https://storage.sustenaut.eu --tenant release-sustenaut

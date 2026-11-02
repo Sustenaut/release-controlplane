@@ -11,8 +11,7 @@
     {
       "plugin": "github.actions-oidc",
       "paths": [
-        ".github/workflows/hourly-board.yml",
-        "scripts/publish-board.py"
+        ".github/workflows/hourly-board.yml"
       ],
       "mode": "required"
     },

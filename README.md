@@ -51,7 +51,7 @@ tenant, so neither can see the other.
 - **`hourly-board.yml`**, each hour: reads Sustenaut's `state.json` with the
   reader app, grades what it puts on the board with `pubkit board`, and keeps
   `board.json` in the storage tenant `release-<owner>` if a fact or a grade changed
-  (`scripts/publish-board.py`), moving the `board` head. This repository is public
+  (`pubkit board-publish`), moving the `board` head. This repository is public
   and a state file may name private repositories, so this workflow's logs print no
   repository's name and it uploads no artifact.
 - **`fleet-nightly.yml`**, each night: pubkit's reusable nightly on

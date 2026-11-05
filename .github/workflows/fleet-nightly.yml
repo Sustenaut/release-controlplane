@@ -40,7 +40,7 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@15d51b4568e7f5782f5f394b9f5d629464c4a288 # v0.26.1
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@d634bd9ba97c6933561e9e7d1ceff5b975e8f22e # v0.28.0
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'

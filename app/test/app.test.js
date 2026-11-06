@@ -7,7 +7,7 @@ import { cached, handler, readiness, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
 import { lastRun } from "../runs.js";
-import { REPO, caller as defaultCaller, stdoutSink } from "../calls.js";
+import { DATASET, REPO, callLog, caller as defaultCaller } from "../calls.js";
 import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
@@ -295,13 +295,24 @@ test("storage that doesn't answer is an error that says so, and a person isn't k
   await assert.rejects(failing.latest({ tenant: "x" }), /storage said 503: down/);
 });
 
-test("by default the records go to stdout as JSON lines", async (t) => {
-  const lines = [];
-  t.mock.method(console, "log", (line) => lines.push(line));
-  stdoutSink.write({ plugin: "storage.api" });
-  assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ plugin: "storage.api" }]);
-  const made = defaultCaller();
-  assert.deepEqual([made.repo, made.app, made.sink], [REPO, "web", stdoutSink]);
+test("the records go to the call log's buffer as the pod, with its storage token", async () => {
+  const sent = [];
+  const fetch = async (url, init) => (sent.push({ url, init }), Response.json({ name: "x", size: 1 }));
+  const sink = callLog({ storageUrl: "https://s", storageTokenFile: "/token" }, {
+    sender: "app-7", start: false, fetch, readFile: async (path) => `token from ${path}\n`,
+  });
+  const { caller } = calling(async () => Response.json(BOARD));
+  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: defaultCaller({ fetch: caller.fetch, sink }), readFile: async () => "t" });
+  await store.latest({ tenant: "release-x" });
+  await sink.flush();
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].url, /^https:\/\/s\/calls-release-controlplane\/inbox\/calls\/\d{4}-\d{2}-\d{2}\/\d{6}-app-7-[0-9a-f]{16}\.avro$/);
+  assert.equal(sent[0].init.method, "PUT");
+  assert.equal(sent[0].init.headers.Authorization, "Bearer token from /token");
+  assert.deepEqual(sink.datasets, { [REPO]: DATASET });
+  assert.equal(sink.flushOnWrite, false, "a page never waits on the call log");
+  const quiet = defaultCaller();
+  assert.deepEqual([quiet.repo, quiet.app], [REPO, "web"]);
 });
 
 test("the config is for one owner, and needs everything", () => {

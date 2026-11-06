@@ -7,6 +7,7 @@
 // page counts at once. A change is a form, checked to come from this site, that becomes
 // a pull request on the owner's state repository.
 
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { accessCheck, DEGRADED, emailAccess, SIGN_IN, UNAVAILABLE } from "./access.js";
@@ -96,7 +97,23 @@ export function stateHistory(github) {
   };
 }
 
-export function handler({ owner, access, github, storage, save, boardRun }) {
+// What the app can't serve a page without, checked at most every 30 seconds: its token
+// for storage, which the kubelet projects and renews. GitHub, storage and the sign-in
+// service are not: a page says what it couldn't read, and an outage of any of them
+// would make every pod unready at once.
+export function readiness(check, now = Date.now) {
+  const held = cached(async () => {
+    try {
+      await check();
+      return null;
+    } catch (error) {
+      return error.message;
+    }
+  }, now, 30_000);
+  return () => held("ready");
+}
+
+export function handler({ owner, access, github, storage, save, boardRun, ready = async () => null }) {
   const checked = cached(boardRun ?? (async () => null));
   const latest = cached(() => storage.latest(owner));
   const state = cached(() => github.stateFile(owner));
@@ -139,7 +156,11 @@ export function handler({ owner, access, github, storage, save, boardRun }) {
       response.end(body);
     };
     const path = request.url.split("?")[0];
-    if (path === "/healthz") return send(200, "ok\n", "text/plain");
+    if (path === "/livez") return send(200, "ok\n", "text/plain");
+    if (path === "/healthz") {
+      const problem = await ready();
+      return problem ? send(503, "not ready\n", "text/plain") : send(200, "ok\n", "text/plain");
+    }
 
     const who = String(request.headers["x-forwarded-email"] ?? "").trim().toLowerCase();
     const reading = request.method === "GET" || request.method === "HEAD";
@@ -194,7 +215,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const access = config.allowedEmails.length
     ? emailAccess(config.allowedEmails, [READER, OPERATOR])
     : accessCheck({ realmUrl: config.realmUrl, clientId: config.clientId, clientSecret: config.clientSecret, role: READER });
-  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config), save, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
+  const ready = readiness(async () => {
+    if (!(await readFile(config.storageTokenFile, "utf8")).trim()) throw new Error(`${config.storageTokenFile} is empty`);
+  });
+  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config), save, ready, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

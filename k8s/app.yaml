@@ -28,10 +28,8 @@ spec:
         app: release
     spec:
       serviceAccountName: app
-      automountServiceAccountToken: false
+      # Its hardening and probes come from pubkit's app component (kustomization.yaml).
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
         fsGroup: 1000
       containers:
         - name: app
@@ -64,15 +62,6 @@ spec:
             # The file, not the token: storage.js reads it on each request.
             - name: STORAGE_TOKEN_FILE
               value: /var/run/secrets/storage.sustenaut.eu/token
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: http
-            periodSeconds: 10
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: { drop: [ALL] }
           resources:
             requests:
               cpu: 20m

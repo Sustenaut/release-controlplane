@@ -13,6 +13,10 @@ resources:
   - app.yaml
   - oauth2-proxy.yaml
   - ingress.yaml
+# The app's hardening and probes, shared by every service (pubkit's README, "Deploying a
+# service to k3s"); k8s-schryer gets them through this directory.
+components:
+  - https://github.com/Sustenaut/pubkit//k8s/components/app?ref=c4bea82a333beb5666f92062daf86c4c79753244 # v0.30.0
 images:
   - name: ghcr.io/sustenaut/sustenaut-release
     newTag: unset

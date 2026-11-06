@@ -241,6 +241,41 @@ test("storage refusing is an error, not an empty board", async () => {
   await assert.rejects(store.latest({ tenant: "x" }), /storage said 403/);
 });
 
+// A fetch that never answers, until the request's signal gives up. AbortSignal.timeout's
+// timer doesn't keep Node running, so this one does, for at most a second.
+const silent = async (url, init) => new Promise((_, reject) => {
+  const alive = setTimeout(() => reject(new Error("the signal never gave up")), 1000);
+  init.signal.addEventListener("abort", () => {
+    clearTimeout(alive);
+    reject(init.signal.reason);
+  });
+});
+
+test("storage that doesn't answer in time is an error that says so", async () => {
+  const seen = [];
+  const fetch = async (url, init) => {
+    seen.push(init.signal);
+    return silent(url, init);
+  };
+  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch, read: async () => "t", timeout: 20 });
+  await assert.rejects(store.latest({ tenant: "x" }), /storage didn't answer within 0.02 s/);
+  assert.ok(seen[0] instanceof AbortSignal);
+  const broken = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch: async () => { throw new TypeError("fetch failed"); }, read: async () => "t" });
+  await assert.rejects(broken.latest({ tenant: "x" }), /fetch failed/);
+});
+
+test("storage and GitHub get ten seconds by default", async () => {
+  const seen = [];
+  const fetch = async (url, init) => {
+    seen.push(init.signal);
+    return Response.json({ workflow_runs: [] });
+  };
+  await boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch, read: async () => "t" }).latest({ tenant: "x" });
+  await lastRun("o/r/b.yml", { fetch })();
+  assert.equal(seen.length, 2);
+  for (const signal of seen) assert.ok(signal instanceof AbortSignal && !signal.aborted);
+});
+
 test("the config is for one owner, and needs everything", () => {
   const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
@@ -285,6 +320,11 @@ test("the last run comes from the workflow named, with no token", async () => {
   assert.equal(seen[0].init.headers.Authorization, undefined);
   assert.equal(await lastRun("o/r/b.yml", { fetch: async () => Response.json({ workflow_runs: [] }) })(), null);
   await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => new Response("", { status: 403 }) })(), /GitHub said 403/);
+});
+
+test("GitHub not answering in time for the last run is an error that says so", async () => {
+  await assert.rejects(lastRun("o/r/b.yml", { fetch: silent, timeout: 20 })(), /GitHub didn't answer within 0.02 s/);
+  await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => { throw new TypeError("fetch failed"); } })(), /fetch failed/);
 });
 
 test("reading takes the release role, by its exact name", async () => {

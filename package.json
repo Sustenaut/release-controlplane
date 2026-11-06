@@ -13,6 +13,7 @@
     "test": "node --test app/test/*.test.js"
   },
   "dependencies": {
+    "@sustenaut/integrations": "github:Sustenaut/integrations#v0.14.0",
     "pubpr": "github:Sustenaut/pubpr#v0.1.1"
   }
 }

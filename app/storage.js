@@ -1,28 +1,27 @@
-// Reading each owner's board from storage.sustenaut.eu, as this pod. Kubernetes
-// renews the token in its file, so the file is read for each request. Cloudflare
-// refuses some default User-Agents, so this one says who it is. A storage that
-// hasn't answered within TIMEOUT_MS is an error that says so, not a page that waits.
+// Reading each owner's board from storage.sustenaut.eu, as this pod, with integrations'
+// generated storage client: the token file is read for each request (Kubernetes renews
+// it), and a storage that doesn't answer within its class's timeout is an error that
+// says so, not a page that waits. A board never written yet is no board.
 
-import { readFile } from "node:fs/promises";
+import { NotFound, Storage, StorageUnavailable } from "@sustenaut/integrations/storage.js";
+import { caller as defaultCaller } from "./calls.js";
 
 const AGENT = "sustenaut-release-controlplane";
-const TIMEOUT_MS = 10_000;
 
-export function boards({ storageUrl, storageTokenFile }, { fetch = globalThis.fetch, read = readFile, timeout = TIMEOUT_MS } = {}) {
-  async function get(owner, path) {
-    const token = (await read(storageTokenFile, "utf8")).trim();
-    const response = await fetch(`${storageUrl}/${owner.tenant}${path}`, {
-      headers: { Authorization: `Bearer ${token}`, "User-Agent": AGENT },
-      signal: AbortSignal.timeout(timeout),
-    }).catch((err) => {
-      throw err?.name === "TimeoutError" ? new Error(`storage didn't answer within ${timeout / 1000} s`) : err;
-    });
-    if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`storage said ${response.status}`);
-    return response.json();
+export function boards({ storageUrl, storageTokenFile }, { caller = defaultCaller(), readFile } = {}) {
+  const store = (owner) => new Storage({ tenant: owner.tenant, baseUrl: storageUrl, tokenFile: storageTokenFile, readFile, caller, userAgent: AGENT });
+  async function read(get, missing) {
+    try {
+      return await get();
+    } catch (err) {
+      if (err instanceof NotFound) return missing;
+      if (err instanceof StorageUnavailable && err.status === null) throw new Error(`storage didn't answer: ${err.detail}`);
+      if (err.status) throw new Error(`storage said ${err.status}${err.error ? `: ${err.error}` : ""}`);
+      throw err;
+    }
   }
   return {
-    latest: (owner) => get(owner, "/head/board"),
-    log: async (owner) => (await get(owner, "/head/board/log"))?.log ?? [],
+    latest: (owner) => read(async () => JSON.parse(new TextDecoder().decode((await store(owner).getHead("board")).body)), null),
+    log: (owner) => read(() => store(owner).headLog("board"), []),
   };
 }

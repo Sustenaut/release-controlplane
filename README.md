@@ -59,6 +59,17 @@ tenant, so neither can see the other.
   and `NIGHTLY_APP_KEY` secret, and the secrets `SUSTENAUT_SLACK_BOT_TOKEN` and
   `SLACK_DM_USER_ID`, here.
 
+## Its calls
+
+The app reads storage (the board and its log) with integrations' generated storage
+client, and the board workflow's last run from GitHub as `github.board-read`, both through
+one `Caller` from [integrations](https://github.com/Sustenaut/integrations)
+(`@sustenaut/integrations`, pinned to a release tag in `package.json`): each call has its
+class's timeout and retries and leaves a record. The records go to stdout as JSON lines
+for now (`app/calls.js`). Sending them to the call log needs a buffer tenant for this app
+in storage and a BigQuery dataset ingest loads it into; then the sink becomes `StorageSink`.
+pubpr makes its own calls to GitHub.
+
 ## The reader app's values
 
 This repository's `pubkit.json` names the reader app's three values in Bitwarden

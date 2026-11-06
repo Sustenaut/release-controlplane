@@ -57,7 +57,10 @@ tenant, so neither can see the other.
 - **`fleet-nightly.yml`**, each night: pubkit's reusable nightly on
   what its `state.json` governs. It needs the nightly app's `NIGHTLY_APP_ID` variable
   and `NIGHTLY_APP_KEY` secret, and the secrets `SUSTENAUT_SLACK_BOT_TOKEN` and
-  `SLACK_DM_USER_ID`, here.
+  `SLACK_DM_USER_ID`, here. Its `variables` job runs `pubkit variables --check` on
+  `state.json`, as the reader app, and sends the operator a direct message saying what
+  differs when a repository's GitHub variables aren't what the state gives them, as after
+  a change by hand. It puts nothing back, and its log says only whether they differ.
 
 ## Its calls
 

@@ -15,6 +15,7 @@ import { configFrom } from "./config.js";
 import { reader } from "./github.js";
 import { boards } from "./storage.js";
 import { lastRun } from "./runs.js";
+import { caller } from "./calls.js";
 import { writer } from "./writer.js";
 import { FormError, noteFrom, protectOn, shaFrom, stateFrom } from "./forms.js";
 import { changes } from "./history.js";
@@ -218,7 +219,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const ready = readiness(async () => {
     if (!(await readFile(config.storageTokenFile, "utf8")).trim()) throw new Error(`${config.storageTokenFile} is empty`);
   });
-  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config), save, ready, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow) : undefined });
+  const calls = caller();
+  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config, { caller: calls }), save, ready, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow, { caller: calls }) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

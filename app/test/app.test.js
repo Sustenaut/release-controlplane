@@ -7,6 +7,8 @@ import { cached, handler, readiness, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
 import { lastRun } from "../runs.js";
+import { REPO, caller as defaultCaller, stdoutSink } from "../calls.js";
+import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
 import { escape } from "../render.js";
@@ -242,15 +244,23 @@ test("the reader reads as each owner's installation, Contents read only, and kee
   assert.equal(calls.filter((c) => c.url.includes("installations/11")).length, 2, "a token near its end is replaced");
 });
 
+// The app's Caller, on a stand-in for fetch, with its records kept and no waits.
+function calling(fetch) {
+  const sink = new MemorySink();
+  const naps = [];
+  return { sink, naps, caller: new Caller(REPO, "web", { fetch, sink, sleep: async (s) => naps.push(s), random: () => 1 }) };
+}
+
 test("storage reads the token afresh, names itself, and a missing head is no board", async () => {
   const seen = [];
   let token = "first";
   const fetch = async (url, init) => {
     seen.push({ url, init });
-    if (url.includes("release-none")) return new Response("", { status: 404 });
-    return url.endsWith("/log") ? Response.json({ log: [{ hash: "h" }] }) : Response.json(BOARD);
+    if (url.includes("release-none")) return Response.json({ error: "not found" }, { status: 404 });
+    return url.endsWith("/log") ? Response.json({ name: "board", log: [{ hash: "h" }] }) : Response.json(BOARD);
   };
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch, read: async () => `${token}\n` });
+  const { caller, sink } = calling(fetch);
+  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => `${token}\n` });
   assert.deepEqual(await store.latest({ tenant: "release-x" }), BOARD);
   token = "second";
   assert.deepEqual(await store.log({ tenant: "release-x" }), [{ hash: "h" }]);
@@ -260,48 +270,38 @@ test("storage reads the token afresh, names itself, and a missing head is no boa
   assert.equal(seen[0].init.headers["User-Agent"], "sustenaut-release-controlplane");
   assert.equal(await store.latest({ tenant: "release-none" }), null);
   assert.deepEqual(await store.log({ tenant: "release-none" }), []);
+  // Each read is a record of storage.api's read, the app's own.
+  assert.deepEqual(sink.records.map((r) => [r.repo, r.plugin, r.operation, r.status]), [
+    [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 404], [REPO, "storage.api", "read", 404]]);
 });
 
-test("storage refusing is an error, not an empty board", async () => {
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, {
-    fetch: async () => new Response("", { status: 403 }), read: async () => "t",
-  });
-  await assert.rejects(store.latest({ tenant: "x" }), /storage said 403/);
+test("storage refusing is an error that says why, not an empty board", async () => {
+  const { caller } = calling(async () => Response.json({ error: "k8s:x may not read here" }, { status: 403 }));
+  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
+  await assert.rejects(store.latest({ tenant: "x" }), /storage said 403: k8s:x may not read here/);
 });
 
-// A fetch that never answers, until the request's signal gives up. AbortSignal.timeout's
-// timer doesn't keep Node running, so this one does, for at most a second.
-const silent = async (url, init) => new Promise((_, reject) => {
-  const alive = setTimeout(() => reject(new Error("the signal never gave up")), 1000);
-  init.signal.addEventListener("abort", () => {
-    clearTimeout(alive);
-    reject(init.signal.reason);
-  });
-});
-
-test("storage that doesn't answer in time is an error that says so", async () => {
+test("storage that doesn't answer is an error that says so, and a person isn't kept waiting on retries", async () => {
   const seen = [];
-  const fetch = async (url, init) => {
+  const { caller } = calling(async (url, init) => {
     seen.push(init.signal);
-    return silent(url, init);
-  };
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch, read: async () => "t", timeout: 20 });
-  await assert.rejects(store.latest({ tenant: "x" }), /storage didn't answer within 0.02 s/);
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  });
+  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
+  await assert.rejects(store.latest({ tenant: "x" }), /storage didn't answer: no answer: timed out after 10 s/);
+  assert.equal(seen.length, 1, "a read a person waits on is tried once");
   assert.ok(seen[0] instanceof AbortSignal);
-  const broken = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch: async () => { throw new TypeError("fetch failed"); }, read: async () => "t" });
-  await assert.rejects(broken.latest({ tenant: "x" }), /fetch failed/);
+  const failing = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: calling(async () => Response.json({ error: "down" }, { status: 503 })).caller, readFile: async () => "t" });
+  await assert.rejects(failing.latest({ tenant: "x" }), /storage said 503: down/);
 });
 
-test("storage and GitHub get ten seconds by default", async () => {
-  const seen = [];
-  const fetch = async (url, init) => {
-    seen.push(init.signal);
-    return Response.json({ workflow_runs: [] });
-  };
-  await boards({ storageUrl: "https://s", storageTokenFile: "f" }, { fetch, read: async () => "t" }).latest({ tenant: "x" });
-  await lastRun("o/r/b.yml", { fetch })();
-  assert.equal(seen.length, 2);
-  for (const signal of seen) assert.ok(signal instanceof AbortSignal && !signal.aborted);
+test("by default the records go to stdout as JSON lines", async (t) => {
+  const lines = [];
+  t.mock.method(console, "log", (line) => lines.push(line));
+  stdoutSink.write({ plugin: "storage.api" });
+  assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ plugin: "storage.api" }]);
+  const made = defaultCaller();
+  assert.deepEqual([made.repo, made.app, made.sink], [REPO, "web", stdoutSink]);
 });
 
 test("the config is for one owner, and needs everything", () => {
@@ -337,22 +337,27 @@ test("with no workflow, or GitHub not answering, the board still shows, without 
   assert.match(failing.text, /example-org\/good/);
 });
 
-test("the last run comes from the workflow named, with no token", async () => {
+test("the last run comes from the workflow named, with no token, as github.board-read", async () => {
   const seen = [];
-  const fetch = async (url, init) => {
+  const { caller, sink } = calling(async (url, init) => {
     seen.push({ url, init });
     return Response.json({ workflow_runs: [{ updated_at: "t", conclusion: "success", html_url: "https://u" }] });
-  };
-  assert.deepEqual(await lastRun("o/r/board.yml", { fetch })(), { time: "t", conclusion: "success", url: "https://u" });
+  });
+  assert.deepEqual(await lastRun("o/r/board.yml", { caller })(), { time: "t", conclusion: "success", url: "https://u" });
   assert.equal(seen[0].url, "https://api.github.com/repos/o/r/actions/workflows/board.yml/runs?status=completed&per_page=1");
   assert.equal(seen[0].init.headers.Authorization, undefined);
-  assert.equal(await lastRun("o/r/b.yml", { fetch: async () => Response.json({ workflow_runs: [] }) })(), null);
-  await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => new Response("", { status: 403 }) })(), /GitHub said 403/);
+  assert.ok(seen[0].init.signal instanceof AbortSignal);
+  assert.deepEqual([sink.records[0].plugin, sink.records[0].operation], ["github.board-read", "read"]);
+  assert.equal(await lastRun("o/r/b.yml", calling(async () => Response.json({ workflow_runs: [] })))(), null);
+  await assert.rejects(lastRun("o/r/b.yml", calling(async () => new Response("", { status: 403 })))(), /GitHub said 403/);
 });
 
-test("GitHub not answering in time for the last run is an error that says so", async () => {
-  await assert.rejects(lastRun("o/r/b.yml", { fetch: silent, timeout: 20 })(), /GitHub didn't answer within 0.02 s/);
-  await assert.rejects(lastRun("o/r/b.yml", { fetch: async () => { throw new TypeError("fetch failed"); } })(), /fetch failed/);
+test("GitHub failing or not answering for the last run is an error that says so, after its retries", async () => {
+  const failing = calling(async () => new Response("", { status: 502 }));
+  await assert.rejects(lastRun("o/r/b.yml", failing)(), /GitHub said 502/);
+  assert.deepEqual(failing.naps, [1, 2], "a board read is scheduled work: three tries");
+  await assert.rejects(lastRun("o/r/b.yml", calling(async () => { throw new TypeError("fetch failed"); }))(), /GitHub didn't answer: no answer: fetch failed/);
+  await assert.rejects(lastRun("o/r/b.yml", { caller: { call: async () => { throw new RangeError("not registered"); } } })(), RangeError);
 });
 
 test("reading takes the release role, by its exact name", async () => {

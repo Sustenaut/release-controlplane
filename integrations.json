@@ -73,6 +73,13 @@
         ".github/workflows/pr.yml"
       ],
       "mode": "required"
+    },
+    {
+      "plugin": "storage.api",
+      "paths": [
+        "app/storage.js"
+      ],
+      "mode": "required"
     }
   ],
   "exclude": [

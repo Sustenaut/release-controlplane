@@ -1,5 +1,6 @@
 # Every night: pubkit's nightly on what Sustenaut's state.json governs.
 # 02:41 UTC. pubkit's own schedule is gone, so this is the only one that runs it.
+# It also reports any GitHub variable that differs from what release-state gives it.
 name: nightly
 
 on:
@@ -40,10 +41,51 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@c7785ba2f32bd5c5a78053e9bfeaa1f966ae36f1 # v0.30.0
+    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@18e9594780aeace92770d9bab1daf7ab1c8274d1 # v0.30.1
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
       app-key: '${{ secrets.NIGHTLY_APP_KEY }}'
       notify-token: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
       notify-user: '${{ secrets.SLACK_DM_USER_ID }}'
+
+  # A variable changed by hand on GitHub, against what release-state gives it. This
+  # only reports, to the operator: putting it back is a pull request to release-state,
+  # or its apply run by hand. This repository is public and the state may name private
+  # repositories, so what differs goes only to the operator's direct message, never
+  # to the log. The token has every permission the reader app has, all
+  # read only, since the action can't ask for the Variables permission by name.
+  variables:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with: { python-version: '3.14' }
+      - run: python -m pip install --quiet --only-binary ':all:' --require-hashes -r tests/requirements.lock
+      - id: sustenaut
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: '${{ vars.RELEASE_READER_APP_ID }}'
+          private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
+          owner: Sustenaut
+      - id: check
+        env: { GH_TOKEN: '${{ steps.sustenaut.outputs.token }}' }
+        run: |
+          gh api -H 'Accept: application/vnd.github.raw+json' repos/Sustenaut/release-state/contents/state.json > state.json
+          if pubkit variables --check --state state.json > variables.txt 2>&1; then status=same; else status=differ; fi
+          echo "Variables: $status" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - name: Say a variable differs
+        if: steps.check.outputs.status == 'differ'
+        env:
+          TOKEN: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
+          USER_ID: '${{ secrets.SLACK_DM_USER_ID }}'
+          RUN: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+        run: |
+          text="GitHub variables differ from Sustenaut/release-state, or couldn't be checked; changed by hand? Nothing was put back. $RUN
+          $(grep -v '^ ' variables.txt | head -20)"
+          curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json; charset=utf-8' \
+            --data "$(jq -n --arg c "$USER_ID" --arg t "$text" '{channel: $c, text: $t}')" > /dev/null

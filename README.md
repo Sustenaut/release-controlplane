@@ -65,9 +65,10 @@ The app reads storage (the board and its log) with integrations' generated stora
 client, and the board workflow's last run from GitHub as `github.board-read`, both through
 one `Caller` from [integrations](https://github.com/Sustenaut/integrations)
 (`@sustenaut/integrations`, pinned to a release tag in `package.json`): each call has its
-class's timeout and retries and leaves a record. The records go to stdout as JSON lines
-for now (`app/calls.js`). Sending them to the call log needs a buffer tenant for this app
-in storage and a BigQuery dataset ingest loads it into; then the sink becomes `StorageSink`.
+class's timeout and retries and leaves a record. The records go to the call log
+(`app/calls.js`): every two minutes an Avro file, written with the pod's storage token
+into the buffer `calls-release-controlplane`, which integrations' ingest loads into the
+BigQuery dataset `calls_release_controlplane`.
 pubpr makes its own calls to GitHub.
 
 ## The reader app's values

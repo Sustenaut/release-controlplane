@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, createPublicKey, createVerify } from "node:crypto";
 import { createServer } from "node:http";
-import { cached, handler, stateHistory } from "../server.js";
+import { cached, handler, readiness, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
 import { lastRun } from "../runs.js";
@@ -103,10 +103,38 @@ test("someone without the role gets in nowhere", async () => {
   }
 });
 
-test("the health check needs no sign-in, and tells nothing", async () => {
-  const { status, text } = await get(handler(fakes()), "/healthz", "");
-  assert.equal(status, 200);
-  assert.equal(text, "ok\n");
+test("the health checks need no sign-in, and tell nothing", async () => {
+  for (const path of ["/healthz", "/livez"]) {
+    const { status, text } = await get(handler(fakes()), path, "");
+    assert.equal(status, 200);
+    assert.equal(text, "ok\n");
+  }
+});
+
+test("without what it needs the app is not ready, but still alive", async () => {
+  const handle = handler({ ...fakes(), ready: async () => "no token" });
+  const ready = await get(handle, "/healthz", "");
+  assert.equal(ready.status, 503);
+  assert.equal(ready.text, "not ready\n");
+  assert.equal((await get(handle, "/livez", "")).status, 200);
+});
+
+test("readiness is checked at most every 30 seconds, a failure too", async () => {
+  let clock = 0;
+  let calls = 0;
+  let failing = true;
+  const ready = readiness(async () => {
+    calls += 1;
+    if (failing) throw new Error("no token");
+  }, () => clock);
+  assert.equal(await ready(), "no token");
+  failing = false;
+  clock = 29_999;
+  assert.equal(await ready(), "no token");
+  assert.equal(calls, 1);
+  clock = 30_000;
+  assert.equal(await ready(), null);
+  assert.equal(calls, 2);
 });
 
 test("only GET and POST are taken, and an unknown page is not found", async () => {

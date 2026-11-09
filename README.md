@@ -49,15 +49,15 @@ tenant, so neither can see the other.
 ## What runs
 
 - **`hourly-board.yml`**, each hour: reads Sustenaut's `state.json` with the
-  reader app, grades what it puts on the board with `pubkit board`, and keeps
+  reader app, grades what it puts on the board with `pubfleet board`, and keeps
   `board.json` in the storage tenant `release-<owner>` if a fact or a grade changed
-  (`pubkit board-publish`), moving the `board` head. This repository is public
+  (`pubfleet board-publish`), moving the `board` head. This repository is public
   and a state file may name private repositories, so this workflow's logs print no
   repository's name and it uploads no artifact.
-- **`fleet-nightly.yml`**, each night: pubkit's reusable nightly on
+- **`fleet-nightly.yml`**, each night: pubfleet's reusable nightly on
   what its `state.json` governs. It needs the nightly app's `NIGHTLY_APP_ID` variable
   and `NIGHTLY_APP_KEY` secret, and the secrets `SUSTENAUT_SLACK_BOT_TOKEN` and
-  `SLACK_DM_USER_ID`, here. Its `variables` job runs `pubkit variables --check` on
+  `SLACK_DM_USER_ID`, here. Its `variables` job runs `pubfleet variables --check` on
   `state.json`, as the reader app, and sends the operator a direct message saying what
   differs when a repository's GitHub variables aren't what the state gives them, as after
   a change by hand. It puts nothing back, and its log says only whether they differ.
@@ -77,11 +77,11 @@ pubpr makes its own calls to GitHub.
 ## The reader app's values
 
 This repository's `pubkit.json` names the reader app's three values in Bitwarden
-and on GitHub, in its `github_app` block. `pubkit app-secrets` sends them here:
+and on GitHub, in its `github_app` block. `pubsec app-secrets` sends them here:
 
 ```sh
-./with-secrets ./pubkit app-secrets --check   # checks only, sends nothing
-./with-secrets ./pubkit app-secrets
+./with-secrets ./pubsec app-secrets --check   # checks only, sends nothing
+./with-secrets ./pubsec app-secrets
 ```
 
 `./with-secrets` reads the `Sustenaut` Bitwarden Secrets Manager project. It needs
@@ -103,14 +103,14 @@ repository with Sustenaut/shared-infra and Sustenaut/auth checked out beside it,
 machine on the admin tailnet, signed in to `gh`:
 
 ```sh
-./with-secrets ./pubkit deploy walk --fulfil --unit release --server sustenaut --zones ../shared-infra/pubkit.json
+./with-secrets ./pubdeploy walk --fulfil --unit release --server sustenaut --zones ../shared-infra/pubkit.json
 ```
 
 schryer.eu's zone is kept in schryer/schryer-eu-infra, so schryer's unit is walked with
 that checkout beside this one:
 
 ```sh
-./with-secrets ./pubkit deploy walk --unit release-schryer --server sustenaut --zones ../schryer-eu-infra/pubkit.json
+./with-secrets ./pubdeploy walk --unit release-schryer --server sustenaut --zones ../schryer-eu-infra/pubkit.json
 ```
 
 It checks every need, prints the plan, and waits for a typed `yes`; then it makes each
@@ -124,7 +124,7 @@ Every run can run again: what is ready is left alone. For the unit `release`, in
 | the Secret `release-secrets` | made from the reader and state writer apps' six values in Bitwarden (`github-release-reader-id`, `-key`, `-installation-id` and `github-release-writer-id`, `-key`, `-installation-id`) and the cookie secret; the app and oauth2-proxy restarted |
 | `auth.sign-in-client` | sustenaut.eu's team-site client in the team realm, role `release`: the approval record written into shared-infra's `infra/auth-approvals.json` when auth.sustenaut.eu wants one, and once the client is issued, the Secret `release-oidc` made from it on the server |
 | `k8s.manifests` | `k8s/admin/network-policy.yaml` applied: only oauth2-proxy's pods may reach the app |
-| the repository's secrets and variables | the reader and nightly apps' values and the Slack secrets, from Bitwarden, as `pubkit app-secrets` sends them |
+| the repository's secrets and variables | the reader and nightly apps' values and the Slack secrets, from Bitwarden, as `pubsec app-secrets` sends them |
 | `DEPLOY_RELEASE` and the rollout | the gate on, once everything before it is ready, and `deploy.yml` run and waited for |
 | `service.health` | `https://release.sustenaut.eu/healthz` answers |
 
@@ -152,7 +152,7 @@ Secrets `release-secrets` and `release-oidc` and its network policy. This reposi
 walk only checks that they are there with the keys the manifests read, along with
 storage's tenant `release-schryer`, the shared needs above, and `DEPLOY_SCHRYER`.
 
-`./pubkit deploy walk` without `--fulfil` (or `deploy check`) changes nothing, and
-`./pubkit deploy walk --offline` checks only the files. `.github/workflows/deploy-check.yml`
+`./pubdeploy walk` without `--fulfil` (or `pubdeploy check`) changes nothing, and
+`./pubdeploy walk --offline` checks only the files. `.github/workflows/deploy-check.yml`
 walks both units every 30 minutes, read-only, with the deploy key, and writes the walk to
 storage's `plane` tenant; it fails when a need is missing, drift or blocked.

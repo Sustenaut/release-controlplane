@@ -1,5 +1,5 @@
-# Every night: pubkit's nightly on what Sustenaut's state.json governs.
-# 02:41 UTC. pubkit's own schedule is gone, so this is the only one that runs it.
+# Every night: pubfleet's nightly on what Sustenaut's state.json governs.
+# 02:41 UTC. pubfleet's nightly has no schedule of its own, so this is the only one that runs it.
 # It also reports any GitHub variable that differs from what release-state gives it.
 name: nightly
 
@@ -32,7 +32,7 @@ jobs:
         run: |
           governed() {
             GH_TOKEN="$2" gh api -H 'Accept: application/vnd.github.raw+json' "repos/$1/release-state/contents/state.json" > state.json
-            pubkit state --repos-for govern state.json
+            pubfleet state --repos-for govern state.json
           }
           echo "Sustenaut=$(governed Sustenaut "$SUSTENAUT_TOKEN")" >> "$GITHUB_OUTPUT"
         env:
@@ -41,7 +41,7 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubkit/.github/workflows/nightly.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
+    uses: Sustenaut/pubfleet/.github/workflows/nightly.yml@80f051890749283c9f5bfc33f328e013be26c05e # v0.1.0
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
@@ -74,7 +74,7 @@ jobs:
         env: { GH_TOKEN: '${{ steps.sustenaut.outputs.token }}' }
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' repos/Sustenaut/release-state/contents/state.json > state.json
-          if pubkit variables --check --state state.json > variables.txt 2>&1; then status=same; else status=differ; fi
+          if pubfleet variables --check --state state.json > variables.txt 2>&1; then status=same; else status=differ; fi
           echo "Variables: $status" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "status=$status" >> "$GITHUB_OUTPUT"
       - name: Say a variable differs

@@ -2,7 +2,8 @@
 # release-schryer: its own settings, sign-in, Secrets and storage tenant, so it and
 # Sustenaut's can't see each other. It signs in with the family realm, as the client
 # schryer.eu, which has no access page, so an email list says who may use it.
-# Its Secrets come from schryer/release-controlplane's push-secrets.sh and register-client.sh.
+# Its Secrets come from schryer/release-controlplane's push-secrets.sh and register-client.sh;
+# this repository's deploy walk only checks they are there (README.md, "Deploying").
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: release-schryer

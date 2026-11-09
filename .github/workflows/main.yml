@@ -13,7 +13,7 @@ jobs:
   # it ran are skipped, and nothing here tests less than the queue did.
   tested:
     name: ci
-    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@0c1f1c3ff98315c6eabad6b58ba9fad79374572a # v0.31.0
+    uses: Sustenaut/pubkit/.github/workflows/job-tested.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
     with: {"workflow": ".github/workflows/pr.yml"}
     permissions:
       actions: read
@@ -23,21 +23,21 @@ jobs:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@0c1f1c3ff98315c6eabad6b58ba9fad79374572a # v0.31.0
-    with: {"shellcheck": "with-secrets push-secrets.sh register-client.sh"}
+    uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
+    with: {"shellcheck": "with-secrets"}
 
   tests:
     name: ci
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
-    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@0c1f1c3ff98315c6eabad6b58ba9fad79374572a # v0.31.0
+    uses: Sustenaut/pubkit/.github/workflows/job-service-tests.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
     with: {"setup": "make venv node", "test": "make functional"}
 
   sonar:
     name: ci
     needs: [tested, tests]
     if: ${{ !failure() && !cancelled() }}
-    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@0c1f1c3ff98315c6eabad6b58ba9fad79374572a # v0.31.0
+    uses: Sustenaut/pubkit/.github/workflows/job-sonar.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
     permissions:
       actions: read
       contents: read

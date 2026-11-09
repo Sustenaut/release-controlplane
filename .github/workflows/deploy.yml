@@ -3,7 +3,8 @@
 # k3s"). The image goes to GitHub's container registry and holds no secrets. Then the
 # manifests in k8s/, rendered with that image, go to the Sustenaut k3s server
 # (shared-infra's infra/hetzner.tf) over SSH and the tailnet, where the deploy key can
-# only run sustenaut-deploy: apply in namespace release and wait. k8s-schryer/,
+# only run sustenaut-deploy: apply in namespace release and wait, once DEPLOY_RELEASE
+# is on, which the deploy walk sets once every need before it is ready. k8s-schryer/,
 # schryer's deployment, goes to release-schryer once DEPLOY_SCHRYER is on, when its
 # namespace and Secrets are on the server.
 #
@@ -25,11 +26,11 @@ permissions:
 
 jobs:
   deploy:
-    uses: Sustenaut/pubkit/.github/workflows/k8s-deploy.yml@0c1f1c3ff98315c6eabad6b58ba9fad79374572a # v0.31.0
+    uses: Sustenaut/pubkit/.github/workflows/k8s-deploy.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
     with:
       image: ghcr.io/sustenaut/sustenaut-release
       deploys: |
-        k8s release
+        k8s release DEPLOY_RELEASE
         k8s-schryer release-schryer DEPLOY_SCHRYER
       # The image must start and hold what the app imports, and no tests.
       check: |

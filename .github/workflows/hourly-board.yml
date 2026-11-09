@@ -1,5 +1,5 @@
 # Every hour: grade what Sustenaut's state.json puts on the board with
-# pubkit, and keep the result in storage if a fact or a grade changed. This
+# pubfleet, and keep the result in storage if a fact or a grade changed. This
 # repository is public and the state may name private repositories, so this job
 # keeps its logs quiet and uploads no artifact: the board goes only to storage.
 name: board
@@ -40,12 +40,12 @@ jobs:
       - name: Grade the owner's repositories
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' "repos/$OWNER/release-state/contents/state.json" > state.json
-          pubkit state --repos-for board state.json > repos.json
-          pubkit board --out site --repos repos.json > /dev/null
+          pubfleet state --repos-for board state.json > repos.json
+          pubfleet board --out site --repos repos.json > /dev/null
         env:
           OWNER: '${{ matrix.owner }}'
           GH_TOKEN: '${{ steps.app.outputs.token }}'
           GITHUB_TOKEN: '${{ steps.app.outputs.token }}'
           SONAR_TOKEN: '${{ secrets.SONAR_TOKEN }}'
       - name: Keep it in storage, if it changed
-        run: pubkit board-publish --url https://storage.sustenaut.eu --tenant release-sustenaut
+        run: pubfleet board-publish --url https://storage.sustenaut.eu --tenant release-sustenaut

@@ -2,9 +2,9 @@
 # infra/hetzner.tf), namespace release: the app, oauth2-proxy in front of it, and the
 # ingress for release.sustenaut.eu. Rendered by .github/workflows/deploy.yml with the
 # image it just built, and applied by sustenaut-deploy on the server.
-# Not here: the Secret release-secrets and the network policy in admin/ (the deploy
-# identity may not manage those), which push-secrets.sh puts in; and the Secret
-# release-oidc (the sign-in client), which register-client.sh puts in.
+# Not here: the Secrets release-secrets and release-oidc (the sign-in client) and the
+# network policy in admin/, which the deploy identity may not manage: pubkit's deploy
+# walk puts them in (README.md, "Deploying").
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: release

@@ -87,3 +87,72 @@ and on GitHub, in its `github_app` block. `pubkit app-secrets` sends them here:
 `./with-secrets` reads the `Sustenaut` Bitwarden Secrets Manager project. It needs
 that project's read-only machine token, as `BWS_ACCESS_TOKEN` or a line in this
 checkout's gitignored `.env`.
+
+## Deploying
+
+`.github/workflows/deploy.yml` builds the image on each merge to main, once CI has
+passed, and applies `k8s/` to namespace `release` with pubkit's `k8s-deploy.yml`, once
+`DEPLOY_RELEASE` is `on`, and `k8s-schryer/` to `release-schryer`, once `DEPLOY_SCHRYER`
+is `on`.
+
+pubkit.json's `deploy` block lists everything else the two deployments need: its top
+level is the unit `release` (release.sustenaut.eu), and `units` adds `release-schryer`
+(release.schryer.eu). pubkit's deploy walk checks each need and makes what it can. To
+take Sustenaut's deployment live, or bring it back in step, from a checkout of this
+repository with Sustenaut/shared-infra and Sustenaut/auth checked out beside it, on a
+machine on the admin tailnet, signed in to `gh`:
+
+```sh
+./with-secrets ./pubkit deploy walk --fulfil --unit release --server sustenaut --zones ../shared-infra/pubkit.json
+```
+
+schryer.eu's zone is kept in schryer/schryer-eu-infra, so schryer's unit is walked with
+that checkout beside this one:
+
+```sh
+./with-secrets ./pubkit deploy walk --unit release-schryer --server sustenaut --zones ../schryer-eu-infra/pubkit.json
+```
+
+It checks every need, prints the plan, and waits for a typed `yes`; then it makes each
+missing need it can, over the admin channel (`ssh root@sustenaut`), and checks it again.
+Every run can run again: what is ready is left alone. For the unit `release`, in order:
+
+| Need | What the walk does |
+|---|---|
+| the namespace `release` | the server's `sustenaut-app`, which makes it and its deploy identity |
+| `bitwarden.generated` `release-cookie-secret` | oauth2-proxy's cookie secret: a new one of its shape, written to Bitwarden, when it is missing or misshapen |
+| the Secret `release-secrets` | made from the reader and state writer apps' six values in Bitwarden (`github-release-reader-id`, `-key`, `-installation-id` and `github-release-writer-id`, `-key`, `-installation-id`) and the cookie secret; the app and oauth2-proxy restarted |
+| `auth.sign-in-client` | sustenaut.eu's team-site client in the team realm, role `release`: the approval record written into shared-infra's `infra/auth-approvals.json` when auth.sustenaut.eu wants one, and once the client is issued, the Secret `release-oidc` made from it on the server |
+| `k8s.manifests` | `k8s/admin/network-policy.yaml` applied: only oauth2-proxy's pods may reach the app |
+| the repository's secrets and variables | the reader and nightly apps' values and the Slack secrets, from Bitwarden, as `pubkit app-secrets` sends them |
+| `DEPLOY_RELEASE` and the rollout | the gate on, once everything before it is ready, and `deploy.yml` run and waited for |
+| `service.health` | `https://release.sustenaut.eu/healthz` answers |
+
+A new cookie secret wants a Bitwarden token that may write: the walk asks for it once, at
+a hidden prompt, and keeps it only in its process. An approval record is a change to
+shared-infra: commit it there, merge, apply, and run the walk again.
+
+Some needs it only checks, and says what a person does:
+
+- **The six app values in Bitwarden**: made when the apps are (each app's own steps).
+- **storage's tenants** in Sustenaut/storage's `tenants.json`: `release-sustenaut`
+  (the board, which `k8s:release/app` reads and this repository's main writes) and
+  `calls-release-controlplane` (the call log buffer, which both deployments' apps
+  write). When one is missing, the fix is the entry to add there.
+- **Its entries in other services' variables**: `release-controlplane` in integrations'
+  `INGEST_DATASETS`, and `release_controlplane.app` in observability's
+  `OBSERVABILITY_SENDERS`.
+- **The DNS record** for `release.sustenaut.eu`, in shared-infra's hosting block.
+- **storage itself** (`upstream`).
+
+The unit `release-schryer` is schryer's: its values are in schryer's own Bitwarden
+project and its sign-in client is kept on the photos server, so
+schryer/release-controlplane's `push-secrets.sh` and `register-client.sh` put in its
+Secrets `release-secrets` and `release-oidc` and its network policy. This repository's
+walk only checks that they are there with the keys the manifests read, along with
+storage's tenant `release-schryer`, the shared needs above, and `DEPLOY_SCHRYER`.
+
+`./pubkit deploy walk` without `--fulfil` (or `deploy check`) changes nothing, and
+`./pubkit deploy walk --offline` checks only the files. `.github/workflows/deploy-check.yml`
+walks both units every 30 minutes, read-only, with the deploy key, and writes the walk to
+storage's `plane` tenant; it fails when a need is missing, drift or blocked.

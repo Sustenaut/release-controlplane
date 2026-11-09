@@ -1,5 +1,5 @@
 # oauth2-proxy signs people in with the team realm at auth.sustenaut.eu, as the client
-# sustenaut.eu registered for its team sites (register-client.sh puts its id and secret
+# sustenaut.eu registered for its team sites (the deploy walk puts its id and secret
 # in the Secret release-oidc). It lets in only people holding the release role, which is
 # kept on auth's access page and arrives in the client's `access` claim. It hands the app
 # the account's verified email in X-Forwarded-Email and its access token in

@@ -4,7 +4,7 @@
     "with": {
       "setup": "make venv node",
       "test": "make functional",
-      "shellcheck": "with-secrets push-secrets.sh register-client.sh"
+      "shellcheck": "with-secrets"
     }
   },
   "protect": {
@@ -49,5 +49,193 @@
       "to": "SLACK_DM_USER_ID",
       "kind": "secret"
     }
-  ]
+  ],
+  "deploy": {
+    "namespace": "release",
+    "host": "release.sustenaut.eu",
+    "workflow": "deploy.yml",
+    "gate": "DEPLOY_RELEASE",
+    "needs": [
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-reader-id",
+        "secret": {
+          "name": "release-secrets",
+          "key": "reader-app-id"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-reader-key",
+        "secret": {
+          "name": "release-secrets",
+          "key": "reader-app-key"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-reader-installation-id",
+        "secret": {
+          "name": "release-secrets",
+          "key": "reader-installation-id"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-writer-id",
+        "secret": {
+          "name": "release-secrets",
+          "key": "writer-app-id"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-writer-key",
+        "secret": {
+          "name": "release-secrets",
+          "key": "writer-app-key"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "github-release-writer-installation-id",
+        "secret": {
+          "name": "release-secrets",
+          "key": "writer-installation-id"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "bitwarden.generated",
+        "name": "release-cookie-secret",
+        "shape": "oauth2-proxy-cookie",
+        "secret": {
+          "name": "release-secrets",
+          "key": "cookie-secret"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "auth.sign-in-client",
+        "realm": "team",
+        "role": "release",
+        "auth": "https://auth.sustenaut.eu/realms/team",
+        "domain": "sustenaut.eu",
+        "host": "release.sustenaut.eu",
+        "state": "/root/.config/sustenaut-auth/team-sustenaut.eu",
+        "client_name": "sustenaut.eu team sites",
+        "register_app": "../auth/register-app.py",
+        "approvals": "../shared-infra/infra/auth-approvals.json",
+        "access": "https://auth.sustenaut.eu/realms/team/access",
+        "secret": {
+          "name": "release-oidc"
+        },
+        "unit": "release"
+      },
+      {
+        "type": "k8s.manifests",
+        "path": "k8s/admin/network-policy.yaml",
+        "unit": "release"
+      },
+      {
+        "type": "upstream",
+        "name": "storage",
+        "health": "https://storage.sustenaut.eu/"
+      },
+      {
+        "type": "storage.tenant",
+        "name": "release-sustenaut",
+        "storage": "Sustenaut/storage",
+        "url": "https://storage.sustenaut.eu",
+        "read": [
+          "k8s:release/app"
+        ],
+        "write": [
+          "github:Sustenaut/release-controlplane@refs/heads/main"
+        ],
+        "private": true,
+        "heads": true,
+        "unit": "release"
+      },
+      {
+        "type": "storage.tenant",
+        "name": "calls-release-controlplane",
+        "storage": "Sustenaut/storage",
+        "url": "https://storage.sustenaut.eu",
+        "write": [
+          "k8s:release/app",
+          "k8s:release-schryer/app"
+        ],
+        "private": true,
+        "inbox": true
+      },
+      {
+        "type": "github.variable-entry",
+        "repository": "Sustenaut/integrations",
+        "variable": "INGEST_DATASETS",
+        "path": "/release-controlplane",
+        "value": "calls_release_controlplane"
+      },
+      {
+        "type": "github.variable-entry",
+        "repository": "Sustenaut/observability",
+        "variable": "OBSERVABILITY_SENDERS",
+        "path": "/release_controlplane/app",
+        "value": "always"
+      },
+      {
+        "type": "storage.tenant",
+        "name": "release-schryer",
+        "unit": "release-schryer",
+        "storage": "Sustenaut/storage",
+        "url": "https://storage.sustenaut.eu",
+        "read": [
+          "k8s:release-schryer/app"
+        ],
+        "write": [
+          "github:schryer/release-controlplane@refs/heads/main"
+        ],
+        "private": true,
+        "heads": true
+      },
+      {
+        "type": "k8s.secret",
+        "name": "release-secrets",
+        "unit": "release-schryer",
+        "keys": [
+          "reader-app-id",
+          "reader-app-key",
+          "reader-installation-id",
+          "writer-app-id",
+          "writer-app-key",
+          "writer-installation-id",
+          "cookie-secret",
+          "allowed-emails",
+          "allowed-emails-file"
+        ]
+      },
+      {
+        "type": "k8s.secret",
+        "name": "release-oidc",
+        "unit": "release-schryer",
+        "keys": [
+          "client-id",
+          "client-secret"
+        ]
+      }
+    ],
+    "units": {
+      "release-schryer": {
+        "namespace": "release-schryer",
+        "overlay": "k8s-schryer",
+        "gate": "DEPLOY_SCHRYER",
+        "host": "release.schryer.eu"
+      }
+    }
+  }
 }

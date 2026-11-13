@@ -30,7 +30,8 @@
     {
       "plugin": "github.board-read",
       "paths": [
-        "app/runs.js"
+        "app/runs.js",
+        "bin/pubkit-report"
       ],
       "mode": "required"
     },

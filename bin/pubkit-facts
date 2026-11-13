@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""The platform's nightly checks of each repository against pubkit, as facts:
+
+    bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks
+    bin/pubkit-facts state.json --out checks.avro          # the file alone, sent nowhere
+
+For each repository state.json puts on the board it reads, as the token in GH_TOKEN
+allows, two things, and records both whatever they show, passes as well as failures:
+
+- pin: the pubkit its tests/requirements-pubkit.txt pins, against pubkit's latest release;
+- sync: whether main's latest main.yml run failed its `pubkit sync --check` step.
+
+Each is one row (observed_at, repository, check, status pass|fail|unknown, pinned, latest,
+main_commit, run_url, fix, run_started_at), all of them one Avro file in the tenant's
+buffer (inbox/pubkit-checks/), which the integrations ingest pod loads into BigQuery's
+platform.pubkit_checks, where observability's pubkit_drift rule reads them. The schema is
+integrations' PUBKIT_CHECK_SCHEMA. It writes as the GitHub Actions job's OpenID Connect
+token, for the audience that is the URL's host name.
+
+It prints only how many rows it wrote and how many failed: the state names private
+repositories, and this runs in a public repository, so their names go only to the
+private tenant, never to the log.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+import fastavro
+
+PIN = re.compile(r"/pubkit-(\d+\.\d+\.\d+)-py3-none-any\.whl")
+SYNC_STEP = "pubkit sync --check"
+FOLDER = "inbox/pubkit-checks/"
+BUMP = "`git latest && ./pubkit bump`, then open its PR"
+GOVERNED = "its nightly update PR moves it"
+SYNC = "`git latest && ./pubkit sync`, then open its PR"
+_TIME = {"type": "long", "logicalType": "timestamp-micros"}
+# integrations' PUBKIT_CHECK_SCHEMA, the columns of platform.pubkit_checks.
+SCHEMA = fastavro.parse_schema({
+    "type": "record", "name": "pubkit_check", "fields": [
+        {"name": "observed_at", "type": _TIME},
+        {"name": "repository", "type": "string"},
+        {"name": "check", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "pinned", "type": "string"},
+        {"name": "latest", "type": "string"},
+        {"name": "main_commit", "type": "string"},
+        {"name": "run_url", "type": "string"},
+        {"name": "fix", "type": "string"},
+        {"name": "run_started_at", "type": _TIME},
+    ]})
+
+
+def gh(path: str, raw: bool = False):
+    """One GitHub API answer through gh, or None when it fails."""
+    argv = ["gh", "api", path]
+    if raw:
+        argv[2:2] = ["-H", "Accept: application/vnd.github.raw+json"]
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout if raw else json.loads(proc.stdout or "null")
+
+
+def version(text: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in text.split("."))
+
+
+def pin_row(repo: str, roles: dict, latest: str) -> dict:
+    """The pubkit the repository pins, against the latest release."""
+    text = gh(f"repos/{repo}/contents/tests/requirements-pubkit.txt", raw=True)
+    m = PIN.search(text or "")
+    if not m:
+        return {"check": "pin", "status": "unknown", "pinned": "", "fix": ""}
+    pinned = m.group(1)
+    behind = version(pinned) < version(latest)
+    fix = (GOVERNED if roles.get("govern") else BUMP) if behind else ""
+    return {"check": "pin", "status": "fail" if behind else "pass", "pinned": pinned, "fix": fix}
+
+
+def sync_row(repo: str) -> dict:
+    """main's latest main.yml run: its sync check step's result, commit and page."""
+    runs = gh(f"repos/{repo}/actions/workflows/main.yml/runs?branch=main&status=completed&per_page=1")
+    run = ((runs or {}).get("workflow_runs") or [None])[0]
+    if not run:
+        return {"check": "sync", "status": "unknown", "main_commit": "", "run_url": "", "fix": ""}
+    jobs = gh(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100") or {}
+    found = [s.get("conclusion") for job in jobs.get("jobs", []) for s in job.get("steps") or []
+             if SYNC_STEP in s.get("name", "")]
+    status = "fail" if "failure" in found else "pass" if "success" in found else "unknown"
+    return {"check": "sync", "status": status, "main_commit": run.get("head_sha", ""),
+            "run_url": run.get("html_url", ""), "fix": SYNC if status == "fail" else ""}
+
+
+def rows(state: dict, latest: str, now: datetime, started: datetime) -> list[dict]:
+    """Two rows for each repository on the board: its pin and its sync check."""
+    out = []
+    for name, roles in sorted(state["repos"].items()):
+        if not roles.get("board"):
+            continue
+        repo = f"{state['owner']}/{name}"
+        pin = pin_row(repo, roles, latest)
+        sync = sync_row(repo)
+        for found in (pin, sync):
+            out.append({"observed_at": now, "repository": repo, "latest": latest,
+                        "pinned": pin["pinned"], "main_commit": sync["main_commit"],
+                        "run_url": sync["run_url"], **found, "run_started_at": started})
+    return out
+
+
+def encode(found: list[dict]) -> bytes:
+    """The rows as one file; the same rows always give the same bytes."""
+    out = io.BytesIO()
+    marker = hashlib.sha256(repr(sorted(map(repr, found))).encode()).digest()[:16]
+    fastavro.writer(out, SCHEMA, found, codec="deflate", sync_marker=marker)
+    return out.getvalue()
+
+
+def place(started: datetime, data: bytes) -> str:
+    """Where the file goes in the tenant's buffer, one per run."""
+    return f"{FOLDER}{started:%Y-%m-%d}/{started:%H%M%S}-nightly-{hashlib.sha256(data).hexdigest()[:16]}.avro"
+
+
+def oidc_token(audience: str) -> str:
+    url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+    separator = "&" if "?" in url else "?"
+    request = urllib.request.Request(f"{url}{separator}audience={urllib.parse.quote(audience)}", headers={
+        "Authorization": f"Bearer {os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']}"})
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - GitHub's own address
+        return json.load(response)["value"]
+
+
+def put(url: str, tenant: str, name: str, data: bytes) -> None:
+    token = oidc_token(urllib.parse.urlsplit(url).hostname)
+    request = urllib.request.Request(f"{url.rstrip('/')}/{tenant}/{name}", data=data, method="PUT",
+                                     headers={"Authorization": f"Bearer {token}",
+                                              "Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - the caller's --url
+        pass
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="pubkit-facts")
+    p.add_argument("state", type=Path)
+    p.add_argument("--url")
+    p.add_argument("--tenant")
+    p.add_argument("--out", type=Path, help="write the file here instead of to storage")
+    args = p.parse_args(argv)
+    if not args.out and not (args.url and args.tenant):
+        p.error("give --url and --tenant, or --out")
+    state = json.loads(args.state.read_text(encoding="utf-8"))
+    release = gh("repos/Sustenaut/pubkit/releases/latest")
+    if not release:
+        print("pubkit-facts: pubkit's latest release can't be read", file=sys.stderr)
+        return 2
+    now = datetime.now(timezone.utc)
+    started = now.replace(microsecond=0)
+    found = rows(state, release["tag_name"].removeprefix("v"), now, started)
+    data = encode(found)
+    if args.out:
+        args.out.write_bytes(data)
+    else:
+        put(args.url, args.tenant, place(started, data), data)
+    failed = sum(1 for r in found if r["status"] == "fail")
+    print(f"{len(found)} checks written, {failed} failing")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

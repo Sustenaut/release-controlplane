@@ -1,7 +1,7 @@
 # Every night: pubfleet's nightly on what Sustenaut's state.json governs.
 # 02:41 UTC. pubfleet's nightly has no schedule of its own, so this is the only one that runs it.
 # It also reports any GitHub variable that differs from what release-state gives it, and
-# what each repository on the board must do to be in step with pubkit.
+# keeps each repository's checks against pubkit as facts for observability.
 name: nightly
 
 on:
@@ -91,37 +91,34 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json; charset=utf-8' \
             --data "$(jq -n --arg c "$USER_ID" --arg t "$text" '{channel: $c, text: $t}')" > /dev/null
 
-  # What each repository on the board must do to be in step with pubkit: one behind
-  # pubkit's latest release, or whose main fails `pubkit sync --check`, gets a line
-  # saying what to run (bin/pubkit-report). This only reports, to the operator. This
-  # repository is public and the state may name private repositories, so the lines go
-  # only to the operator's direct message; the log and the summary give a count.
+  # Each repository on the board against pubkit, every night, as facts: its pin against
+  # pubkit's latest release, and main's sync check, passes as well as failures, one row
+  # each (bin/pubkit-facts). They go to storage's private pubkit-checks buffer, which the
+  # integrations ingest loads into BigQuery's platform.pubkit_checks, where observability's
+  # pubkit_drift rule opens a signal on a failure and the notifier posts its fix. This
+  # repository is public and the state may name private repositories, so the facts go
+  # only to the private tenant; the log and the summary give counts.
   pubkit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write  # storage takes the job's OpenID Connect token
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: { python-version: '3.14' }
+      - run: python -m pip install --quiet --only-binary ':all:' --require-hashes -r tests/requirements.lock
       - id: sustenaut
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: '${{ vars.RELEASE_READER_APP_ID }}'
           private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
           owner: Sustenaut
-      - id: report
+      - name: Check each repository, and keep the facts in storage
         env: { GH_TOKEN: '${{ steps.sustenaut.outputs.token }}' }
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' repos/Sustenaut/release-state/contents/state.json > state.json
-          bin/pubkit-report state.json > "$RUNNER_TEMP/pubkit.txt"
-          steps=$(grep -c '^•' "$RUNNER_TEMP/pubkit.txt" || true)
-          echo "pubkit steps to take: $steps" | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "steps=$steps" >> "$GITHUB_OUTPUT"
-      - name: Say what to run
-        if: steps.report.outputs.steps != '0'
-        env:
-          TOKEN: '${{ secrets.SUSTENAUT_SLACK_BOT_TOKEN }}'
-          USER_ID: '${{ secrets.SLACK_DM_USER_ID }}'
-        run: |
-          curl -sS -X POST https://slack.com/api/chat.postMessage \
-            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json; charset=utf-8' \
-            --data "$(jq -n --arg c "$USER_ID" --rawfile t "$RUNNER_TEMP/pubkit.txt" '{channel: $c, text: $t}')" > /dev/null
+          python bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks \
+            | tee -a "$GITHUB_STEP_SUMMARY"

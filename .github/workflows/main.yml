@@ -24,7 +24,7 @@ jobs:
     needs: [tested]
     if: ${{ needs.tested.outputs.tested != 'true' }}
     uses: Sustenaut/pubkit/.github/workflows/job-service-checks.yml@c502c3d3969ac75ec9a411c284e49f01c5a93558 # v0.37.0
-    with: {"shellcheck": "with-secrets"}
+    with: {"shellcheck": "with-secrets scripts/*.sh"}
 
   tests:
     name: ci

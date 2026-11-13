@@ -11,7 +11,9 @@
       "plugin": "github.actions-oidc",
       "paths": [
         ".github/workflows/deploy-check.yml",
-        ".github/workflows/hourly-board.yml"
+        ".github/workflows/fleet-nightly.yml",
+        ".github/workflows/hourly-board.yml",
+        "bin/pubkit-facts"
       ],
       "mode": "required"
     },
@@ -31,7 +33,7 @@
       "plugin": "github.board-read",
       "paths": [
         "app/runs.js",
-        "bin/pubkit-report"
+        "bin/pubkit-facts"
       ],
       "mode": "required"
     },
@@ -48,7 +50,8 @@
       "plugin": "github.repo-ops",
       "paths": [
         ".github/workflows/fleet-nightly.yml",
-        ".github/workflows/hourly-board.yml"
+        ".github/workflows/hourly-board.yml",
+        "scripts/go-live-pubkit-facts.sh"
       ],
       "mode": "required"
     },

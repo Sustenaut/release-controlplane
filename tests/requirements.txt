@@ -2,3 +2,4 @@
 # set with hashes lives in requirements.lock. Regenerate it with `pubkit lock`.
 -r requirements-pubkit.txt
 pubfleet @ https://github.com/Sustenaut/pubfleet/releases/download/v0.1.0/pubfleet-0.1.0-py3-none-any.whl
+fastavro==1.13.1

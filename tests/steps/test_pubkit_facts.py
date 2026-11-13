@@ -135,5 +135,7 @@ def to_storage(job):
 def counts(job):
     text = yaml.safe_dump(job)
     assert "slack" not in text.lower() and "upload-artifact" not in text
-    run = next(s["run"] for s in job["steps"] if "pubkit-facts" in s.get("run", ""))
-    assert "--out" not in run and "cat " not in run
+    step = next(s for s in job["steps"] if "pubkit-facts" in s.get("run", ""))
+    assert "--out" not in step["run"] and "cat " not in step["run"]
+    # bash with pipefail, so a refused write fails the job though tee runs last.
+    assert step["shell"] == "bash"

@@ -35,7 +35,10 @@ jobs:
             GH_TOKEN="$2" gh api -H 'Accept: application/vnd.github.raw+json' "repos/$1/release-state/contents/state.json" > state.json
             pubfleet state --repos-for govern state.json
           }
-          echo "Sustenaut=$(governed Sustenaut "$SUSTENAUT_TOKEN")" >> "$GITHUB_OUTPUT"
+          # A state the pubfleet here can't read stops the run here, saying why, rather than
+          # handing the nightly an empty list it can't make a matrix of.
+          repos=$(governed Sustenaut "$SUSTENAUT_TOKEN")
+          echo "Sustenaut=$repos" >> "$GITHUB_OUTPUT"
         env:
           SUSTENAUT_TOKEN: '${{ steps.sustenaut.outputs.token }}'
 
@@ -118,6 +121,8 @@ jobs:
           owner: Sustenaut
       - name: Check each repository, and keep the facts in storage
         env: { GH_TOKEN: '${{ steps.sustenaut.outputs.token }}' }
+        # pipefail: a write storage refuses fails the job, though tee has the last word.
+        shell: bash
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' repos/Sustenaut/release-state/contents/state.json > state.json
           python bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks \

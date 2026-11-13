@@ -24,6 +24,17 @@ Feature: The nightly keeps each repository's checks against pubkit as facts
     And the facts hold nothing of "Sustenaut/hidden"
     And the output names no repository
 
+  Scenario: A repository behind a release still in its grace days is behind, not failing
+    Given pubkit's latest release is "0.38.0"
+    And pubkit "0.38.0" was released 1 days ago
+    And pubkit "0.37.1" was released 20 days ago
+    And the state puts "fresh" on the board, pinning pubkit "0.37.1", whose main passes its sync check at "f1"
+    And the state puts "stale" on the board, pinning pubkit "0.36.0", whose main passes its sync check at "s1"
+    When I write the facts
+    Then it succeeds, printing "4 checks written, 1 failing"
+    And the facts hold "Sustenaut/fresh" pin "behind"
+    And the facts hold "Sustenaut/stale" pin "fail"
+
   Scenario: The nightly sends the facts only to the private tenant
     When I read the nightly workflow
     Then its pubkit job writes the facts to storage's pubkit-checks tenant as the job's own token

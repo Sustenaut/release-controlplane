@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""What each repository on the board must do to be in step with pubkit, as one
+Slack message for the operator: `bin/pubkit-report state.json > message.txt`.
+
+For each repository state.json puts on the board it reads, as the token in
+GH_TOKEN allows, the pubkit its tests/requirements-pubkit.txt pins, against
+pubkit's latest release, and whether main's latest main.yml run failed its
+`pubkit sync --check` step. Each one behind or out of step gets a line saying
+what to run. It prints the message, empty when there is nothing to do, and
+nothing else: the state names private repositories, and the job that runs this
+keeps them out of the public log, sending them only in the direct message.
+A repository it cannot read is left out, not guessed at.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+PIN = re.compile(r"/pubkit-(\d+\.\d+\.\d+)-py3-none-any\.whl")
+SYNC_STEP = "pubkit sync --check"
+
+
+def gh(path: str, raw: bool = False):
+    """One GitHub API answer through gh, or None when it fails."""
+    argv = ["gh", "api", path]
+    if raw:
+        argv[2:2] = ["-H", "Accept: application/vnd.github.raw+json"]
+    proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout if raw else json.loads(proc.stdout or "null")
+
+
+def version(text: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in text.split("."))
+
+
+def pinned(repo: str) -> str | None:
+    text = gh(f"repos/{repo}/contents/tests/requirements-pubkit.txt", raw=True)
+    m = PIN.search(text or "")
+    return m.group(1) if m else None
+
+
+def failed_sync(repo: str) -> str | None:
+    """The URL of main's latest main.yml run when its sync check failed."""
+    runs = gh(f"repos/{repo}/actions/workflows/main.yml/runs?branch=main&status=completed&per_page=1")
+    run = (runs or {}).get("workflow_runs") or []
+    if not run:
+        return None
+    jobs = gh(f"repos/{repo}/actions/runs/{run[0]['id']}/jobs?per_page=100") or {}
+    for job in jobs.get("jobs", []):
+        for step in job.get("steps") or []:
+            if SYNC_STEP in step.get("name", "") and step.get("conclusion") == "failure":
+                return run[0].get("html_url", "")
+    return None
+
+
+def lines(state: dict, latest: str) -> list[str]:
+    out = []
+    owner = state["owner"]
+    for name, roles in sorted(state["repos"].items()):
+        if not roles.get("board"):
+            continue
+        repo = f"{owner}/{name}"
+        pin = pinned(repo)
+        if pin and version(pin) < version(latest):
+            how = ("its nightly update PR moves it" if roles.get("govern")
+                   else "`git latest && ./pubkit bump`, then open its PR")
+            out.append(f"• {name}: on pubkit {pin}, latest {latest}: {how}")
+        if url := failed_sync(repo):
+            out.append(f"• {name}: main fails `./pubkit sync --check` ({url}): "
+                       "`git latest && ./pubkit sync`, then open its PR")
+    return out
+
+
+def main(argv: list[str]) -> int:
+    state = json.loads(Path(argv[0] if argv else "state.json").read_text(encoding="utf-8"))
+    release = gh("repos/Sustenaut/pubkit/releases/latest")
+    if not release:
+        print("pubkit-report: pubkit's latest release can't be read", file=sys.stderr)
+        return 2
+    latest = release["tag_name"].removeprefix("v")
+    found = lines(state, latest)
+    if found:
+        print(f"{len(found)} pubkit step(s) to take, against pubkit {latest}:")
+        print("\n".join(found))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

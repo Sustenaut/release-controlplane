@@ -61,6 +61,11 @@ tenant, so neither can see the other.
   `state.json`, as the reader app, and sends the operator a direct message saying what
   differs when a repository's GitHub variables aren't what the state gives them, as after
   a change by hand. It puts nothing back, and its log says only whether they differ.
+  Its `pubkit` job runs `bin/pubkit-report` on `state.json`, as the reader app: each
+  repository on the board that pins an older pubkit than its latest release, or whose
+  main fails `pubkit sync --check`, gets a line in a direct message saying what to run
+  (`git latest && ./pubkit bump`, or `./pubkit sync`, then a pull request; a governed
+  one waits for its nightly update PR). Its log and summary give only how many.
 
 ## Its calls
 

@@ -7,10 +7,15 @@
 For each repository state.json puts on the board it reads, as the token in GH_TOKEN
 allows, two things, and records both whatever they show, passes as well as failures:
 
-- pin: the pubkit its tests/requirements-pubkit.txt pins, against pubkit's latest release;
-- sync: whether main's latest main.yml run failed its `pubkit sync --check` step.
+- pin: the pubkit its tests/requirements-pubkit.txt pins, against pubkit's releases. It
+  passes on the latest, is "behind" while the first release after its pin is under
+  GRACE_DAYS old (the nightly and the bump round have not had their turn yet), and
+  fails once that release is older: a repository left behind, not a release day;
+- sync: the newest of main's commits whose `pubkit sync --check` step ran, in main.yml or
+  in the merge queue's run of that very commit (main skips the tests the queue passed):
+  pass or fail, with that run.
 
-Each is one row (observed_at, repository, check, status pass|fail|unknown, pinned, latest,
+Each is one row (observed_at, repository, check, status pass|behind|fail|unknown, pinned, latest,
 main_commit, run_url, fix, run_started_at), all of them one Avro file in the tenant's
 buffer (inbox/pubkit-checks/), which the integrations ingest pod loads into BigQuery's
 platform.pubkit_checks, where observability's pubkit_drift rule reads them. The schema is
@@ -41,7 +46,11 @@ from pathlib import Path
 import fastavro
 
 PIN = re.compile(r"/pubkit-(\d+\.\d+\.\d+)-py3-none-any\.whl")
-SYNC_STEP = "pubkit sync --check"
+# The names pubkit's generated CI gives the step that runs `pubkit sync --check`: the
+# Python and Rust jobs' run lines, the service checks job's name, and the Node test
+# job's first line.
+SYNC_STEPS = ("pubkit sync --check", "make sync-check", "managed files are in step",
+              "Run python -m venv .venv")
 FOLDER = "inbox/pubkit-checks/"
 # Named, as pubfleet board-publish is: Cloudflare, in front of storage, turns away
 # Python's default User-Agent (error code 1010) before storage sees the request.
@@ -49,6 +58,10 @@ AGENT = "release-controlplane-pubkit-facts"
 BUMP = "`git latest && ./pubkit bump`, then open its PR"
 GOVERNED = "its nightly update PR moves it"
 SYNC = "`git latest && ./pubkit sync`, then open its PR"
+# How long a repository may stay behind a pubkit release before its pin fails.
+GRACE_DAYS = 7
+# How far back main's commits are read for a run whose sync check ran.
+SYNC_RUNS = 10
 _TIME = {"type": "long", "logicalType": "timestamp-micros"}
 # integrations' PUBKIT_CHECK_SCHEMA, the columns of platform.pubkit_checks.
 SCHEMA = fastavro.parse_schema({
@@ -81,45 +94,68 @@ def version(text: str) -> tuple[int, ...]:
     return tuple(int(p) for p in text.split("."))
 
 
-def pin_row(repo: str, roles: dict, latest: str) -> dict:
-    """The pubkit the repository pins, against the latest release."""
+def releases() -> dict[str, datetime]:
+    """When each pubkit release was published, by version."""
+    found = gh("repos/Sustenaut/pubkit/releases?per_page=100") or []
+    return {r["tag_name"].removeprefix("v"): datetime.fromisoformat(r["published_at"].replace("Z", "+00:00"))
+            for r in found if r.get("published_at") and not r.get("draft")}
+
+
+def pin_row(repo: str, roles: dict, latest: str, published: dict[str, datetime], now: datetime) -> dict:
+    """The pubkit the repository pins, against pubkit's releases: behind for GRACE_DAYS
+    after the first release past its pin, failing after that."""
     text = gh(f"repos/{repo}/contents/tests/requirements-pubkit.txt", raw=True)
     m = PIN.search(text or "")
     if not m:
         return {"check": "pin", "status": "unknown", "pinned": "", "fix": ""}
     pinned = m.group(1)
-    behind = version(pinned) < version(latest)
-    fix = (GOVERNED if roles.get("govern") else BUMP) if behind else ""
-    return {"check": "pin", "status": "fail" if behind else "pass", "pinned": pinned, "fix": fix}
+    if version(pinned) >= version(latest):
+        return {"check": "pin", "status": "pass", "pinned": pinned, "fix": ""}
+    newer = [at for v, at in published.items() if re.fullmatch(r"\d+\.\d+\.\d+", v) and version(v) > version(pinned)]
+    overdue = not newer or (now - min(newer)).days >= GRACE_DAYS
+    return {"check": "pin", "status": "fail" if overdue else "behind", "pinned": pinned,
+            "fix": GOVERNED if roles.get("govern") else BUMP}
+
+
+def sync_step(repo: str, run: dict) -> str | None:
+    """The run's sync check step's conclusion, success or failure, or None when it has
+    none that ran."""
+    jobs = gh(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100") or {}
+    found = [s.get("conclusion") for job in jobs.get("jobs", []) for s in job.get("steps") or []
+             if any(name in s.get("name", "") for name in SYNC_STEPS)]
+    return "failure" if "failure" in found else "success" if "success" in found else None
 
 
 def sync_row(repo: str) -> dict:
-    """main's latest main.yml run: its sync check step's result, commit and page."""
-    runs = gh(f"repos/{repo}/actions/workflows/main.yml/runs?branch=main&status=completed&per_page=1")
-    run = ((runs or {}).get("workflow_runs") or [None])[0]
-    if not run:
-        return {"check": "sync", "status": "unknown", "main_commit": "", "run_url": "", "fix": ""}
-    jobs = gh(f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100") or {}
-    found = [s.get("conclusion") for job in jobs.get("jobs", []) for s in job.get("steps") or []
-             if SYNC_STEP in s.get("name", "")]
-    status = "fail" if "failure" in found else "pass" if "success" in found else "unknown"
-    return {"check": "sync", "status": status, "main_commit": run.get("head_sha", ""),
-            "run_url": run.get("html_url", ""), "fix": SYNC if status == "fail" else ""}
+    """The newest of main's commits whose sync check ran: its result, commit and run.
+    main.yml skips its tests on a commit the merge queue already passed, so a commit's
+    other runs (the queue's, on that very commit) are read too, newest commit first."""
+    runs = gh(f"repos/{repo}/actions/workflows/main.yml/runs?branch=main&status=completed&per_page={SYNC_RUNS}")
+    for main_run in (runs or {}).get("workflow_runs") or []:
+        sha = main_run.get("head_sha", "")
+        others = gh(f"repos/{repo}/actions/runs?head_sha={sha}&status=completed&per_page=20") or {}
+        for run in [main_run, *(r for r in others.get("workflow_runs") or [] if r["id"] != main_run["id"])]:
+            if (found := sync_step(repo, run)) is not None:
+                status = "fail" if found == "failure" else "pass"
+                return {"check": "sync", "status": status, "main_commit": sha,
+                        "run_url": run.get("html_url", ""), "fix": SYNC if status == "fail" else ""}
+    return {"check": "sync", "status": "unknown", "main_commit": "", "run_url": "", "fix": ""}
 
 
-def rows(state: dict, latest: str, now: datetime, started: datetime) -> list[dict]:
-    """Two rows for each repository on the board: its pin and its sync check."""
+def rows(state: dict, latest: str, published: dict[str, datetime], now: datetime,
+         started: datetime) -> list[dict]:
+    """Two rows for each repository on the board: its pin and its sync check. Only the
+    sync row carries main's run and commit, the evidence of that check alone."""
     out = []
     for name, roles in sorted(state["repos"].items()):
         if not roles.get("board"):
             continue
         repo = f"{state['owner']}/{name}"
-        pin = pin_row(repo, roles, latest)
+        pin = pin_row(repo, roles, latest, published, now)
         sync = sync_row(repo)
-        for found in (pin, sync):
+        for found in ({"main_commit": "", "run_url": "", **pin}, sync):
             out.append({"observed_at": now, "repository": repo, "latest": latest,
-                        "pinned": pin["pinned"], "main_commit": sync["main_commit"],
-                        "run_url": sync["run_url"], **found, "run_started_at": started})
+                        "pinned": pin["pinned"], **found, "run_started_at": started})
     return out
 
 
@@ -180,7 +216,7 @@ def main(argv: list[str]) -> int:
         return 2
     now = datetime.now(timezone.utc)
     started = now.replace(microsecond=0)
-    found = rows(state, release["tag_name"].removeprefix("v"), now, started)
+    found = rows(state, release["tag_name"].removeprefix("v"), releases(), now, started)
     data = encode(found)
     if args.out:
         args.out.write_bytes(data)

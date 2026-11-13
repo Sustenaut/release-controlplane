@@ -23,6 +23,8 @@ world = json.load(open(os.environ["FAKE_WORLD"]))
 path = sys.argv[-1]
 if path == "repos/Sustenaut/pubkit/releases/latest":
     print(json.dumps({{"tag_name": "v" + world["latest"]}})); sys.exit(0)
+if path.startswith("repos/Sustenaut/pubkit/releases?"):
+    print(json.dumps([{{"tag_name": "v" + v, "published_at": at}} for v, at in world["released"].items()])); sys.exit(0)
 m = re.match(r"repos/Sustenaut/([^/]+)/contents/tests/requirements-pubkit.txt$", path)
 if m and m.group(1) in world["pins"]:
     v = world["pins"][m.group(1)]
@@ -41,12 +43,18 @@ sys.stderr.write("gh: Not Found (HTTP 404)\\\\n"); sys.exit(1)
 
 @pytest.fixture
 def world():
-    return {"latest": "0", "pins": {}, "runs": {}, "state": {"owner": "Sustenaut", "repos": {}}}
+    return {"latest": "0", "released": {}, "pins": {}, "runs": {}, "state": {"owner": "Sustenaut", "repos": {}}}
 
 
 @given(parsers.parse('pubkit\'s latest release is "{v}"'))
 def latest(world, v):
     world["latest"] = v
+
+
+@given(parsers.parse('pubkit "{v}" was released {days:d} days ago'))
+def released(world, v, days):
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+    world["released"][v] = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @given(parsers.re(r'the state (?P<how>puts|governs|has) "(?P<name>[^"]+)"(?: on the board| off the board)?, '
@@ -99,12 +107,15 @@ def holds(result, repo, check, status, pinned, fix):
 
 @then(parsers.parse('every fact of "{repo}" names main\'s commit "{sha}", its run, latest "{latest}" and the run\'s start'))
 def names(result, repo, sha, latest):
-    found = [f for f in result["facts"] if f["repository"] == repo]
-    assert len(found) == 2
+    found = {f["check"]: f for f in result["facts"] if f["repository"] == repo}
+    assert set(found) == {"pin", "sync"}
     starts = {f["run_started_at"] for f in result["facts"]}
     assert len(starts) == 1
-    for f in found:
-        assert f["main_commit"] == sha and f["run_url"].endswith(f"/actions/runs/{sha}"), f
+    sync = found["sync"]
+    assert sync["main_commit"] == sha and sync["run_url"].endswith(f"/actions/runs/{sha}"), sync
+    # The run is the sync check's evidence alone: a pin row names no run.
+    assert found["pin"]["main_commit"] == "" and found["pin"]["run_url"] == "", found["pin"]
+    for f in found.values():
         assert f["latest"] == latest and f["observed_at"] >= f["run_started_at"], f
 
 
@@ -117,6 +128,11 @@ def nothing_of(result, repo):
 def quiet(result):
     out = result["proc"].stdout + result["proc"].stderr
     assert "Sustenaut/" not in out and "behind" not in out and "drifted" not in out, out
+
+
+@then(parsers.re(r'the facts hold "(?P<repo>[^"]+)" pin "(?P<status>\w+)"$'))
+def pin_status(result, repo, status):
+    assert _fact(result, repo, "pin")["status"] == status
 
 
 @when("I read the nightly workflow", target_fixture="job")

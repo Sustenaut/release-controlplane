@@ -43,6 +43,9 @@ import fastavro
 PIN = re.compile(r"/pubkit-(\d+\.\d+\.\d+)-py3-none-any\.whl")
 SYNC_STEP = "pubkit sync --check"
 FOLDER = "inbox/pubkit-checks/"
+# Named, as pubfleet board-publish is: Cloudflare, in front of storage, turns away
+# Python's default User-Agent (error code 1010) before storage sees the request.
+AGENT = "release-controlplane-pubkit-facts"
 BUMP = "`git latest && ./pubkit bump`, then open its PR"
 GOVERNED = "its nightly update PR moves it"
 SYNC = "`git latest && ./pubkit sync`, then open its PR"
@@ -150,7 +153,8 @@ def put(url: str, tenant: str, name: str, data: bytes) -> None:
     token = oidc_token(urllib.parse.urlsplit(url).hostname)
     request = urllib.request.Request(f"{url.rstrip('/')}/{tenant}/{name}", data=data, method="PUT",
                                      headers={"Authorization": f"Bearer {token}",
-                                              "Content-Type": "application/octet-stream"})
+                                              "Content-Type": "application/octet-stream",
+                                              "User-Agent": AGENT})
     try:
         with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - the caller's --url
             pass

@@ -32,6 +32,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -141,13 +142,22 @@ def oidc_token(audience: str) -> str:
         return json.load(response)["value"]
 
 
+class Refused(Exception):
+    """Storage would not take the file: its status, and what it said."""
+
+
 def put(url: str, tenant: str, name: str, data: bytes) -> None:
     token = oidc_token(urllib.parse.urlsplit(url).hostname)
     request = urllib.request.Request(f"{url.rstrip('/')}/{tenant}/{name}", data=data, method="PUT",
                                      headers={"Authorization": f"Bearer {token}",
                                               "Content-Type": "application/octet-stream"})
-    with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - the caller's --url
-        pass
+    try:
+        with urllib.request.urlopen(request, timeout=60):  # noqa: S310 - the caller's --url
+            pass
+    except urllib.error.HTTPError as e:
+        # Storage's answer names the principal and the tenant, never a repository.
+        said = e.read().decode("utf-8", "replace")[:300]
+        raise Refused(f"storage answered {e.code} for tenant {tenant}: {said}") from None
 
 
 def main(argv: list[str]) -> int:
@@ -171,7 +181,11 @@ def main(argv: list[str]) -> int:
     if args.out:
         args.out.write_bytes(data)
     else:
-        put(args.url, args.tenant, place(started, data), data)
+        try:
+            put(args.url, args.tenant, place(started, data), data)
+        except Refused as e:
+            print(f"pubkit-facts: {e}", file=sys.stderr)
+            return 1
     failed = sum(1 for r in found if r["status"] == "fail")
     print(f"{len(found)} checks written, {failed} failing")
     return 0

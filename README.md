@@ -61,11 +61,15 @@ tenant, so neither can see the other.
   `state.json`, as the reader app, and sends the operator a direct message saying what
   differs when a repository's GitHub variables aren't what the state gives them, as after
   a change by hand. It puts nothing back, and its log says only whether they differ.
-  Its `pubkit` job runs `bin/pubkit-report` on `state.json`, as the reader app: each
-  repository on the board that pins an older pubkit than its latest release, or whose
-  main fails `pubkit sync --check`, gets a line in a direct message saying what to run
-  (`git latest && ./pubkit bump`, or `./pubkit sync`, then a pull request; a governed
-  one waits for its nightly update PR). Its log and summary give only how many.
+  Its `pubkit` job runs `bin/pubkit-facts` on `state.json`, as the reader app: for each
+  repository on the board, two facts every night, passes as well as failures, its pubkit
+  pin against pubkit's latest release and main's `pubkit sync --check`, with the pinned and
+  latest versions, main's commit and run, and what to run to fix it. They go to storage's
+  private `pubkit-checks` buffer, as the job's OpenID Connect token; the integrations ingest
+  loads them into BigQuery's `platform.pubkit_checks`, observability's `pubkit_drift` rule
+  opens a signal per failing check, and the notifier posts it with its fix. The deploy
+  block declares the tenant and integrations' `INGEST_PUBKIT_CHECKS`. Its log and summary
+  give only counts.
 
 ## Its calls
 

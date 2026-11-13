@@ -10,7 +10,6 @@
     {
       "plugin": "github.actions-oidc",
       "paths": [
-        ".github/workflows/deploy-check.yml",
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
         "bin/pubkit-facts"

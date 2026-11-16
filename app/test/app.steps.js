@@ -1,5 +1,6 @@
 // The pages, with GitHub and storage answered here.
-import { test } from "node:test";
+import { After, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, createPublicKey, createVerify } from "node:crypto";
 import { createServer } from "node:http";
@@ -14,6 +15,16 @@ import { configFrom } from "../config.js";
 import { escape } from "../render.js";
 import { accessCheck } from "../access.js";
 import { fakeAccess } from "./fake-access.js";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@app", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -64,7 +75,8 @@ async function get(handle, path, email = "me@example.org", method = "GET", roles
   }
 }
 
-test("the board groups by project, worst first, and says when there is none", async () => {
+Then("the board groups by project, worst first, and says when there is none", function () {
+  return (async () => {
   const { status, text } = await get(handler(fakes()), "/");
   assert.equal(status, 200);
   assert.ok(text.indexOf("example-org/bad") < text.indexOf("example-org/good"), "worst first");
@@ -72,21 +84,27 @@ test("the board groups by project, worst first, and says when there is none", as
   assert.match(text, /private/);
   assert.match(text, /aria-current="page">Board/);
   assert.match((await get(handler(fakes({ storage: { latest: async () => null } })), "/")).text, /No board yet/);
+})();
 });
 
-test("what a repository says is escaped, everywhere", async () => {
+Then("what a repository says is escaped, everywhere", function () {
+  return (async () => {
   const { text } = await get(handler(fakes()), "/");
   assert.ok(!text.includes("<b>old</b>") && !text.includes("<issues>"));
   assert.ok(text.includes(escape("3 open <issues>")));
+})();
 });
 
-test("the state shows each repository's roles", async () => {
+Then("the state shows each repository's roles", function () {
+  return (async () => {
   const { text } = await get(handler(fakes()), "/state");
   assert.match(text, /bad<\/td><td>·<\/td><td class="on">on<\/td><td class="off">off<\/td><td class="off">off/);
   assert.match(text, /good<\/td><td>tools<\/td><td class="on">on<\/td><td class="on">on<\/td><td class="on">on/);
+})();
 });
 
-test("the history shows state changes in words, and the board's snapshots", async () => {
+Then("the history shows state changes in words, and the board's snapshots", function () {
+  return (async () => {
   const states = { new: { owner: "o", repos: { good: roles({ govern: true }) } }, old: { owner: "o", repos: { good: roles() } } };
   const { text } = await get(handler(fakes({ github: { state: async (_, ref) => states[ref] ?? STATE } })), "/history");
   assert.match(text, /good: govern on/);
@@ -94,34 +112,42 @@ test("the history shows state changes in words, and the board's snapshots", asyn
   assert.match(text, /Govern good/);
   assert.match(text, /aaaaaaaaaaaa/);
   assert.ok(!text.includes("a".repeat(13)), "a snapshot's hash is shortened");
+})();
 });
 
-test("someone without the role gets in nowhere", async () => {
+Then("someone without the role gets in nowhere", function () {
+  return (async () => {
   const handle = handler(fakes());
   for (const [email, roles] of [["stranger@example.org", "opportunity"], ["", "release"]]) {
     const { status, text } = await get(handle, "/state", email, "GET", roles);
     assert.equal(status, 403);
     assert.ok(!text.includes("good"));
   }
+})();
 });
 
-test("the health checks need no sign-in, and tell nothing", async () => {
+Then("the health checks need no sign-in, and tell nothing", function () {
+  return (async () => {
   for (const path of ["/healthz", "/livez"]) {
     const { status, text } = await get(handler(fakes()), path, "");
     assert.equal(status, 200);
     assert.equal(text, "ok\n");
   }
+})();
 });
 
-test("without what it needs the app is not ready, but still alive", async () => {
+Then("without what it needs the app is not ready, but still alive", function () {
+  return (async () => {
   const handle = handler({ ...fakes(), ready: async () => "no token" });
   const ready = await get(handle, "/healthz", "");
   assert.equal(ready.status, 503);
   assert.equal(ready.text, "not ready\n");
   assert.equal((await get(handle, "/livez", "")).status, 200);
+})();
 });
 
-test("readiness is checked at most every 30 seconds, a failure too", async () => {
+Then("readiness is checked at most every 30 seconds, a failure too", function () {
+  return (async () => {
   let clock = 0;
   let calls = 0;
   let failing = true;
@@ -137,29 +163,37 @@ test("readiness is checked at most every 30 seconds, a failure too", async () =>
   clock = 30_000;
   assert.equal(await ready(), null);
   assert.equal(calls, 2);
+})();
 });
 
-test("only GET and POST are taken, and an unknown page is not found", async () => {
+Then("only GET and POST are taken, and an unknown page is not found", function () {
+  return (async () => {
   assert.equal((await get(handler(fakes()), "/", "me@example.org", "PUT")).status, 405);
   assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 404);
   assert.equal((await get(handler(fakes()), "/example-org")).status, 404);
   assert.equal((await get(handler(fakes()), "/nope")).status, 404);
+})();
 });
 
-test("pages allow no scripts and are not stored", async () => {
+Then("pages allow no scripts and are not stored", function () {
+  return (async () => {
   const { headers } = await get(handler(fakes()), "/");
   assert.match(headers.get("content-security-policy"), /default-src 'none'/);
   assert.equal(headers.get("cache-control"), "no-store");
+})();
 });
 
-test("what can't be read is said on the page", async () => {
+Then("what can't be read is said on the page", function () {
+  return (async () => {
   const failing = { latest: async () => { throw new Error("storage said 500"); } };
   const { status, text } = await get(handler(fakes({ storage: failing })), "/");
   assert.equal(status, 200);
   assert.match(text, /storage said 500/);
+})();
 });
 
-test("the page names only this deployment's owner, and reads only its tenant and repository", async () => {
+Then("the page names only this deployment's owner, and reads only its tenant and repository", function () {
+  return (async () => {
   const asked = [];
   const handle = handler(fakes({
     storage: { latest: async (o) => (asked.push(o), BOARD), log: async (o) => (asked.push(o), []) },
@@ -168,9 +202,11 @@ test("the page names only this deployment's owner, and reads only its tenant and
   for (const path of ["/", "/state", "/history"]) assert.equal((await get(handle, path)).status, 200);
   assert.ok(asked.length >= 3);
   assert.ok(asked.every((o) => o === OWNER));
+})();
 });
 
-test("a read is kept for a minute, and a failure isn't kept", async () => {
+Then("a read is kept for a minute, and a failure isn't kept", function () {
+  return (async () => {
   let reads = 0;
   let time = 0;
   let fail = true;
@@ -181,9 +217,11 @@ test("a read is kept for a minute, and a failure isn't kept", async () => {
   assert.equal(await read("a"), 2);
   time = 60_000;
   assert.equal(await read("a"), 3);
+})();
 });
 
-test("a commit's state file is read once, and a failed read is tried again", async () => {
+Then("a commit's state file is read once, and a failed read is tried again", function () {
+  return (async () => {
   let reads = 0;
   let fail = true;
   const github = {
@@ -196,26 +234,32 @@ test("a commit's state file is read once, and a failed read is tried again", asy
   await history(OWNER);
   await history(OWNER);
   assert.equal(reads, 2);
+})();
 });
 
-test("changes says what moved, added and went", () => {
+Then("changes says what moved, added and went", function () {
+  return (() => {
   const before = { repos: { a: roles(), b: roles(), c: roles({ project: "x" }) } };
   const after = { repos: { a: roles({ board: false }), c: roles({ project: "y" }), d: roles() } };
   assert.deepEqual(changes(before, after), ["a: board off", "b removed", "c: project y", "d added"]);
   assert.deepEqual(changes(after, after), []);
   assert.deepEqual(changes({ repos: { a: roles({ project: "x" }) } }, { repos: { a: roles() } }), ["a: project none"]);
+})();
 });
 
-test("the app's token is a signed JWT GitHub can check", () => {
+Then("the app's token is a signed JWT GitHub can check", function () {
+  return (() => {
   const jwt = appJwt("123", privateKey, 1_000_000);
   const [head, body, signature] = jwt.split(".");
   const claims = JSON.parse(Buffer.from(body, "base64url"));
   assert.equal(claims.iss, "123");
   assert.ok(claims.iat < 1000 && claims.exp - claims.iat <= 600);
   assert.ok(createVerify("RSA-SHA256").update(`${head}.${body}`).verify(createPublicKey(privateKey), signature, "base64url"));
+})();
 });
 
-test("the reader reads as each owner's installation, Contents read only, and keeps its token", async () => {
+Then("the reader reads as each owner's installation, Contents read only, and keeps its token", function () {
+  return (async () => {
   const calls = [];
   let time = Date.parse("2026-10-30T10:00:00Z");
   const fetch = async (url, init) => {
@@ -242,6 +286,7 @@ test("the reader reads as each owner's installation, Contents read only, and kee
   time += 3_600_000;
   await github.state(OWNER);
   assert.equal(calls.filter((c) => c.url.includes("installations/11")).length, 2, "a token near its end is replaced");
+})();
 });
 
 // The app's Caller, on a stand-in for fetch, with its records kept and no waits.
@@ -251,7 +296,8 @@ function calling(fetch) {
   return { sink, naps, caller: new Caller(REPO, "web", { fetch, sink, sleep: async (s) => naps.push(s), random: () => 1 }) };
 }
 
-test("storage reads the token afresh, names itself, and a missing head is no board", async () => {
+Then("storage reads the token afresh, names itself, and a missing head is no board", function () {
+  return (async () => {
   const seen = [];
   let token = "first";
   const fetch = async (url, init) => {
@@ -273,15 +319,19 @@ test("storage reads the token afresh, names itself, and a missing head is no boa
   // Each read is a record of storage.api's read, the app's own.
   assert.deepEqual(sink.records.map((r) => [r.repo, r.plugin, r.operation, r.status]), [
     [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 404], [REPO, "storage.api", "read", 404]]);
+})();
 });
 
-test("storage refusing is an error that says why, not an empty board", async () => {
+Then("storage refusing is an error that says why, not an empty board", function () {
+  return (async () => {
   const { caller } = calling(async () => Response.json({ error: "k8s:x may not read here" }, { status: 403 }));
   const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
   await assert.rejects(store.latest({ tenant: "x" }), /storage said 403: k8s:x may not read here/);
+})();
 });
 
-test("storage that doesn't answer is an error that says so, and a person isn't kept waiting on retries", async () => {
+Then("storage that doesn't answer is an error that says so, and a person isn't kept waiting on retries", function () {
+  return (async () => {
   const seen = [];
   const { caller } = calling(async (url, init) => {
     seen.push(init.signal);
@@ -293,9 +343,11 @@ test("storage that doesn't answer is an error that says so, and a person isn't k
   assert.ok(seen[0] instanceof AbortSignal);
   const failing = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: calling(async () => Response.json({ error: "down" }, { status: 503 })).caller, readFile: async () => "t" });
   await assert.rejects(failing.latest({ tenant: "x" }), /storage said 503: down/);
+})();
 });
 
-test("the records go to the call log's buffer as the pod, with its storage token", async () => {
+Then("the records go to the call log's buffer as the pod, with its storage token", function () {
+  return (async () => {
   const sent = [];
   const fetch = async (url, init) => (sent.push({ url, init }), Response.json({ name: "x", size: 1 }));
   const sink = callLog({ storageUrl: "https://s", storageTokenFile: "/token" }, {
@@ -313,9 +365,11 @@ test("the records go to the call log's buffer as the pod, with its storage token
   assert.equal(sink.flushOnWrite, false, "a page never waits on the call log");
   const quiet = defaultCaller();
   assert.deepEqual([quiet.repo, quiet.app], [REPO, "web"]);
+})();
 });
 
-test("the config is for one owner, and needs everything", () => {
+Then("the config is for one owner, and needs everything", function () {
+  return (() => {
   const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
   assert.deepEqual(config.owner, { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
@@ -325,30 +379,38 @@ test("the config is for one owner, and needs everything", () => {
     assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
   }
   assert.throws(() => configFrom({ ...env, RELEASE_READER_APP_INSTALLATION_ID: "x" }), /must be a number/);
+})();
 });
 
-test("the board says when it was last checked, apart from when it last changed", async () => {
+Then("the board says when it was last checked, apart from when it last changed", function () {
+  return (async () => {
   const boardRun = async () => ({ time: "2026-10-31T09:13:00Z", conclusion: "success", url: "https://github.com/x/runs/1" });
   const { text } = await get(handler({ ...fakes(), boardRun }), "/");
   assert.match(text, /Last checked <a href="https:\/\/github.com\/x\/runs\/1">2026-10-31T09:13:00Z<\/a>\./);
   assert.match(text, /2 repos: 1 A, 1 D/);
   assert.ok(!text.includes("It ended"));
+})();
 });
 
-test("a run that didn't pass says so", async () => {
+Then("a run that didn't pass says so", function () {
+  return (async () => {
   const boardRun = async () => ({ time: "t", conclusion: "failure", url: "https://u" });
   assert.match((await get(handler({ ...fakes(), boardRun }), "/")).text, /It ended: failure/);
+})();
 });
 
-test("with no workflow, or GitHub not answering, the board still shows, without that line", async () => {
+Then("with no workflow, or GitHub not answering, the board still shows, without that line", function () {
+  return (async () => {
   assert.ok(!(await get(handler(fakes()), "/")).text.includes("Last checked"));
   const failing = await get(handler({ ...fakes(), boardRun: async () => { throw new Error("GitHub said 403"); } }), "/");
   assert.equal(failing.status, 200);
   assert.ok(!failing.text.includes("Last checked"));
   assert.match(failing.text, /example-org\/good/);
+})();
 });
 
-test("the last run comes from the workflow named, with no token, as github.board-read", async () => {
+Then("the last run comes from the workflow named, with no token, as github.board-read", function () {
+  return (async () => {
   const seen = [];
   const { caller, sink } = calling(async (url, init) => {
     seen.push({ url, init });
@@ -361,17 +423,21 @@ test("the last run comes from the workflow named, with no token, as github.board
   assert.deepEqual([sink.records[0].plugin, sink.records[0].operation], ["github.board-read", "read"]);
   assert.equal(await lastRun("o/r/b.yml", calling(async () => Response.json({ workflow_runs: [] })))(), null);
   await assert.rejects(lastRun("o/r/b.yml", calling(async () => new Response("", { status: 403 })))(), /GitHub said 403/);
+})();
 });
 
-test("GitHub failing or not answering for the last run is an error that says so, after its retries", async () => {
+Then("GitHub failing or not answering for the last run is an error that says so, after its retries", function () {
+  return (async () => {
   const failing = calling(async () => new Response("", { status: 502 }));
   await assert.rejects(lastRun("o/r/b.yml", failing)(), /GitHub said 502/);
   assert.deepEqual(failing.naps, [1, 2], "a board read is scheduled work: three tries");
   await assert.rejects(lastRun("o/r/b.yml", calling(async () => { throw new TypeError("fetch failed"); }))(), /GitHub didn't answer: no answer: fetch failed/);
   await assert.rejects(lastRun("o/r/b.yml", { caller: { call: async () => { throw new RangeError("not registered"); } } })(), RangeError);
+})();
 });
 
-test("reading takes the release role, by its exact name", async () => {
+Then("reading takes the release role, by its exact name", function () {
+  return (async () => {
   const seen = async (roles, email = "me@example.org") => (await get(handler(fakes()), "/", email, "GET", roles)).status;
   assert.equal(await seen("release"), 200);
   assert.equal(await seen("opportunity,release"), 200);
@@ -379,6 +445,7 @@ test("reading takes the release role, by its exact name", async () => {
   assert.equal(await seen("controller"), 403);
   assert.equal(await seen("role:release"), 403);
   assert.equal(await seen("released"), 403);
+})();
 });
 
 function keycloakAnswers(answers, now = Date.now) {
@@ -392,7 +459,8 @@ function keycloakAnswers(answers, now = Date.now) {
   });
 }
 
-test("the page's answer to a sign-in that has ended: a read goes to sign in, a change is refused", async () => {
+Then("the page's answer to a sign-in that has ended: a read goes to sign in, a change is refused", function () {
+  return (async () => {
   const access = keycloakAnswers((url) => (url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 401, body: {} }));
   const handle = handler(fakes({ access }));
   const server = createServer((req, res) => handle(req, res)).listen(0);
@@ -409,9 +477,11 @@ test("the page's answer to a sign-in that has ended: a read goes to sign in, a c
   } finally {
     server.close();
   }
+})();
 });
 
-test("with Keycloak down someone vouched for reads, without a form; anyone else gets a 503", async () => {
+Then("with Keycloak down someone vouched for reads, without a form; anyone else gets a 503", function () {
+  return (async () => {
   let down = false;
   let time = 0;
   const access = keycloakAnswers((url) => {
@@ -429,12 +499,15 @@ test("with Keycloak down someone vouched for reads, without a form; anyone else 
   assert.doesNotMatch(text, /<form/);
   assert.equal((await get(withWriter, "/state", "me@example.org", "POST", "t")).status, 503);
   assert.equal((await get(handle, "/state", "other@example.org", "GET", "t")).status, 503);
+})();
 });
 
-test("with an email list the config needs no sign-in client", () => {
+Then("with an email list the config needs no sign-in client", function () {
+  return (() => {
   const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", ALLOWED_EMAILS: " Me@x.org, ", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
   const config = configFrom(env);
   assert.deepEqual(config.allowedEmails, ["me@x.org"]);
   assert.equal(config.clientId, undefined);
   assert.throws(() => configFrom({ ...env, ALLOWED_EMAILS: "" }), /OIDC_CLIENT_ID is not set/);
+})();
 });

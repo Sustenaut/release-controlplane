@@ -1,5 +1,6 @@
 // An operator changing the state, with the pull request written to memory.
-import { test } from "node:test";
+import { After, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { createServer } from "node:http";
@@ -10,6 +11,16 @@ import { stateText, writer } from "../writer.js";
 import { reader } from "../github.js";
 import { configFrom } from "../config.js";
 import { fakeAccess } from "./fake-access.js";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@edits", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -62,24 +73,29 @@ const form = (fields) => new URLSearchParams(fields).toString();
 const SAVE = form([["base", SHA], ["note", "Govern good"], ["repo", "good"], ["good.board", "on"], ["good.protect", "on"], ["good.govern", "on"], ["good.project", "tools"], ["repo", "bad"], ["bad.board", "on"], ["bad.protect", "on"]]);
 const post = (handle, path, options) => call(handle, path, { method: "POST", ...options });
 
-test("an operator's state page is a form, with the repositories not in the state in grey", async () => {
+Then("an operator's state page is a form, with the repositories not in the state in grey", function () {
+  return (async () => {
   const { text } = await call(app().handle, "/state");
   assert.match(text, /<form method="post" action="\/state">/);
   assert.ok(text.includes(`name="base" value="${SHA}"`));
   assert.match(text, /name="good.govern"/);
   assert.match(text, /class="absent"[^]*unlisted/);
   assert.match(text, /name="note" required/);
+})();
 });
 
-test("someone not an operator sees no form, and an owner with no writer has none either", async () => {
+Then("someone not an operator sees no form, and an owner with no writer has none either", function () {
+  return (async () => {
   const { text } = await call(app().handle, "/state", { email: "reader@x.org" });
   assert.ok(!text.includes("<form"));
   assert.ok(!text.includes("unlisted"));
   assert.ok(!(await call(app({ owner: READ_ONLY }).handle, "/state")).text.includes("<form"));
   assert.ok(!(await call(app({ noSave: true }).handle, "/state")).text.includes("<form"));
+})();
 });
 
-test("a save opens a pull request with the new state, the note and who asked", async () => {
+Then("a save opens a pull request with the new state, the note and who asked", function () {
+  return (async () => {
   const { handle, saved } = app();
   const { status, text } = await post(handle, "/state", { body: SAVE });
   assert.equal(status, 200);
@@ -91,9 +107,11 @@ test("a save opens a pull request with the new state, the note and who asked", a
   assert.equal(saved[0].sha, SHA);
   assert.equal(saved[0].state.repos.good.govern, true);
   assert.equal(saved[0].state.owner, "example-org");
+})();
 });
 
-test("what GitHub answered is said plainly", async () => {
+Then("what GitHub answered is said plainly", function () {
+  return (async () => {
   for (const [answer, status, words] of [
     [{ status: "nothing to change" }, 200, /already says this/],
     [{ status: "stale", path: "state.json" }, 409, /changed while you were looking/],
@@ -104,9 +122,11 @@ test("what GitHub answered is said plainly", async () => {
     assert.equal(result.status, status);
     assert.match(result.text, words);
   }
+})();
 });
 
-test("only an operator may save, and only from this site", async () => {
+Then("only an operator may save, and only from this site", function () {
+  return (async () => {
   const { handle, saved } = app();
   assert.equal((await post(handle, "/state", { email: "reader@x.org", body: SAVE })).status, 403);
   assert.equal((await post(handle, "/state", { email: "stranger@x.org", body: SAVE })).status, 403);
@@ -116,9 +136,11 @@ test("only an operator may save, and only from this site", async () => {
   assert.equal((await post(handle, "/other", { body: SAVE })).status, 404);
   assert.equal((await post(app({ noSave: true }).handle, "/state", { body: SAVE })).status, 403);
   assert.deepEqual(saved, []);
+})();
 });
 
-test("a bad form says why, and saves nothing", async () => {
+Then("a bad form says why, and saves nothing", function () {
+  return (async () => {
   const { handle, saved } = app();
   const bad = async (fields, words) => {
     const { status, text } = await post(handle, "/state", { body: form(fields) });
@@ -136,9 +158,11 @@ test("a bad form says why, and saves nothing", async () => {
   await bad([["base", SHA], ["note", "n"], ["new-label", "Bad Label"], ["repo", "good"], ["good.project", "__new__"]], /A label is lower case/);
   await bad([["base", SHA], ["note", "n"], ["new-label", "spare"], ["repo", "good"], ["good.project", "tools"]], /wouldn&#39;t be kept/);
   assert.deepEqual(saved, []);
+})();
 });
 
-test("a form too large is refused", async () => {
+Then("a form too large is refused", function () {
+  return (async () => {
   const { handle, saved } = app();
   const server = createServer((req, res) => handle(req, res)).listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -153,9 +177,11 @@ test("a form too large is refused", async () => {
     server.close();
     server.closeAllConnections();
   }
+})();
 });
 
-test("a failure saving is said, not thrown", async () => {
+Then("a failure saving is said, not thrown", function () {
+  return (async () => {
   const handle = handler({
     owner: OWNER, access: fakeAccess(), storage: {},
     github: { stateFile: async () => ({ state: STATE, sha: SHA }), repositories: async () => ["good", "bad"] },
@@ -164,9 +190,11 @@ test("a failure saving is said, not thrown", async () => {
   const { status, text } = await post(handle, "/state", { body: SAVE });
   assert.equal(status, 502);
   assert.match(text, /GitHub said 500/);
+})();
 });
 
-test("a save reads the state afresh, and doesn't show the old one after", async () => {
+Then("a save reads the state afresh, and doesn't show the old one after", function () {
+  return (async () => {
   const { handle, reads } = app();
   await call(handle, "/state");
   const before = reads();
@@ -174,9 +202,11 @@ test("a save reads the state afresh, and doesn't show the old one after", async 
   assert.equal(reads(), before + 1);
   await call(handle, "/state");
   assert.equal(reads(), before + 2);
+})();
 });
 
-test("history offers going back to any but the newest, and reverting saves the old file", async () => {
+Then("history offers going back to any but the newest, and reverting saves the old file", function () {
+  return (async () => {
   const { handle, saved } = app();
   const page = await call(handle, "/history");
   assert.ok(page.text.includes(`/state/revert/${COMMIT}`));
@@ -187,51 +217,65 @@ test("history offers going back to any but the newest, and reverting saves the o
   assert.equal(status, 200);
   assert.deepEqual(saved[0].state, OLD);
   assert.equal(saved[0].note, "Undo it");
+})();
 });
 
-test("the state page offers the labels in use, the current one chosen, and a new one", async () => {
+Then("the state page offers the labels in use, the current one chosen, and a new one", function () {
+  return (async () => {
   const { text } = await call(app().handle, "/state");
   assert.match(text, /<select name="good.project"[^>]*><option value="">None<\/option><option value="tools" selected>tools<\/option><option value="__new__">New label…/);
   assert.match(text, /<select name="bad.project"[^>]*><option value="" selected>None/);
   assert.match(text, /<select name="unlisted.project"/);
   assert.match(text, /name="new-label"/);
+})();
 });
 
-test("a new label goes to each repository set to it, and then is one of the labels", () => {
+Then("a new label goes to each repository set to it, and then is one of the labels", function () {
+  return (() => {
   const f = new URLSearchParams(form([["new-label", "shiny"], ["repo", "good"], ["good.board", "on"], ["good.project", "__new__"], ["repo", "bad"], ["bad.board", "on"], ["bad.project", "__new__"]]));
   const made = stateFrom(f, STATE, []);
   assert.equal(made.repos.good.project, "shiny");
   assert.equal(made.repos.bad.project, "shiny");
   assert.deepEqual(labelsOf(made), ["shiny"]);
   assert.deepEqual(labelsOf(STATE), ["tools"]);
+})();
 });
 
-test("stateFrom keeps what the form doesn't name, adds on a role, and drops a project", () => {
+Then("stateFrom keeps what the form doesn't name, adds on a role, and drops a project", function () {
+  return (() => {
   const f = new URLSearchParams(form([["new-label", "pub"], ["repo", "good"], ["good.board", "on"], ["repo", "unlisted"], ["repo", "more"], ["more.govern", "on"], ["more.project", "__new__"]]));
   const made = stateFrom(f, STATE, ["good", "bad", "unlisted", "more"]);
   assert.deepEqual(made.repos.bad, STATE.repos.bad, "not in the form");
   assert.deepEqual(made.repos.good, { board: true, protect: false, govern: false }, "project emptied");
   assert.equal(made.repos.unlisted, undefined, "no role, so it doesn't join");
   assert.deepEqual(made.repos.more, { project: "pub", board: false, protect: false, govern: true });
+})();
 });
 
-test("a repository in the state stays even with every role off", () => {
+Then("a repository in the state stays even with every role off", function () {
+  return (() => {
   const made = stateFrom(new URLSearchParams("repo=good"), STATE, []);
   assert.deepEqual(made.repos.good, { board: false, protect: false, govern: false });
+})();
 });
 
-test("form checks throw FormError", () => {
+Then("form checks throw FormError", function () {
+  return (() => {
   assert.throws(() => noteFrom(new URLSearchParams()), FormError);
   assert.throws(() => shaFrom(new URLSearchParams("base=zz")), FormError);
   assert.equal(noteFrom(new URLSearchParams("note=a%0Ab")), "a b");
+})();
 });
 
-test("the file is stable: sorted, indented, ending in a newline", () => {
+Then("the file is stable: sorted, indented, ending in a newline", function () {
+  return (() => {
   assert.equal(stateText({ owner: "o", repos: { b: { board: true }, a: { board: false } } }),
     '{\n  "owner": "o",\n  "repos": {\n    "a": {\n      "board": false\n    },\n    "b": {\n      "board": true\n    }\n  }\n}\n');
+})();
 });
 
-test("the writer proposes one file, expecting what was read, merging itself, with its own token", async () => {
+Then("the writer proposes one file, expecting what was read, merging itself, with its own token", function () {
+  return (async () => {
   const fake = fakePublisher();
   const asked = [];
   const fetch = async (url, init) => {
@@ -256,9 +300,11 @@ test("the writer proposes one file, expecting what was read, merging itself, wit
   assert.equal(await token(), "w");
   assert.match(asked[0].url, /installations\/33\/access_tokens/);
   assert.deepEqual(JSON.parse(asked[0].body), { permissions: { contents: "write", pull_requests: "write" } });
+})();
 });
 
-test("the reader reads the file with its sha, and lists every page of repositories", async () => {
+Then("the reader reads the file with its sha, and lists every page of repositories", function () {
+  return (async () => {
   const pages = { 1: Array.from({ length: 100 }, (_, i) => ({ name: `r${i}` })), 2: [{ name: "last" }] };
   const fetch = async (url) => {
     if (url.includes("access_tokens")) return Response.json({ token: "t", expires_at: "2030-01-01T00:00:00Z" });
@@ -270,15 +316,18 @@ test("the reader reads the file with its sha, and lists every page of repositori
   const names = await github.repositories(OWNER);
   assert.equal(names.length, 101);
   assert.ok(names.includes("last"));
+})();
 });
 
-test("the config takes a writer installation", () => {
+Then("the config takes a writer installation", function () {
+  return (() => {
   const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", RELEASE_STATE_WRITER_INSTALLATION_ID: "2", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f", RELEASE_STATE_WRITER_APP_ID: "8", RELEASE_STATE_WRITER_APP_KEY: "w" };
   const config = configFrom(env);
   assert.equal(config.owner.writerInstallation, "2");
   assert.equal(config.writerId, "8");
   assert.equal(configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: undefined }).owner.writerInstallation, undefined);
   assert.throws(() => configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: "x" }), /must be a number/);
+})();
 });
 
 const secretsOff = (repo) => ({ repo, kind: "package", overall: "B", grades: { security: { letter: "B", steps: [
@@ -286,38 +335,47 @@ const secretsOff = (repo) => ({ repo, kind: "package", overall: "B", grades: { s
 const OFF_BOARD = { summary: "s", repos: [secretsOff("example-org/good"), secretsOff("example-org/bad")] };
 const OFF_STATE = { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles({ protect: false }) } };
 
-test("an operator sees what fixes secret scanning: a button, or the next apply", async () => {
+Then("an operator sees what fixes secret scanning: a button, or the next apply", function () {
+  return (async () => {
   const { handle } = app({ board: OFF_BOARD, state: OFF_STATE });
   const { text } = await call(handle, "/");
   assert.equal(text.match(/action="\/state\/turn-on"/g).length, 1);
   assert.match(text, /name="repo" value="bad"/);
   assert.match(text, /Protect is on, so the next apply turns these on/);
+})();
 });
 
-test("a reader sees the notch, and no way to fix it", async () => {
+Then("a reader sees the notch, and no way to fix it", function () {
+  return (async () => {
   const { handle } = app({ board: OFF_BOARD, state: OFF_STATE });
   const { text } = await call(handle, "/", { email: "reader@x.org" });
   assert.match(text, /push protection off/);
   assert.doesNotMatch(text, /turn-on|next apply/);
+})();
 });
 
-test("nothing to fix shows no button", async () => {
+Then("nothing to fix shows no button", function () {
+  return (async () => {
   const board = { summary: "s", repos: [{ repo: "example-org/bad", kind: "package", overall: "A", grades: { security: { letter: "A", steps: [
     { text: "Secret scanning settings: not available", delta: 0, facts: ["secret_protection"] }] } } }] };
   const { text } = await call(app({ board, state: OFF_STATE }).handle, "/");
   assert.doesNotMatch(text, /turn-on|next apply/);
+})();
 });
 
-test("Turn on saves that repository's protect, and nothing else", async () => {
+Then("Turn on saves that repository's protect, and nothing else", function () {
+  return (async () => {
   const { handle, saved } = app({ state: OFF_STATE });
   const body = form([["base", SHA], ["note", "Turn on"], ["repo", "bad"]]);
   assert.equal((await post(handle, "/state/turn-on", { body })).status, 200);
   assert.deepEqual(saved[0].state, { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles() } });
   assert.equal(saved[0].sha, SHA);
   assert.equal(saved[0].note, "Turn on");
+})();
 });
 
-test("Turn on refuses a repository not in the state, a reader, and another site", async () => {
+Then("Turn on refuses a repository not in the state, a reader, and another site", function () {
+  return (async () => {
   const { handle, saved } = app({ state: OFF_STATE });
   const body = (repo) => form([["base", SHA], ["note", "Turn on"], ["repo", repo]]);
   assert.equal((await post(handle, "/state/turn-on", { body: body("unlisted") })).status, 400);
@@ -325,4 +383,5 @@ test("Turn on refuses a repository not in the state, a reader, and another site"
   assert.equal((await post(handle, "/state/turn-on", { email: "reader@x.org", body: body("bad") })).status, 403);
   assert.equal((await post(handle, "/state/turn-on", { origin: "https://evil.example", body: body("bad") })).status, 403);
   assert.equal(saved.length, 0);
+})();
 });

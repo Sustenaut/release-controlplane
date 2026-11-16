@@ -4,6 +4,8 @@ import { After, Then } from "@cucumber/cucumber";
 import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 // What node:test gave each test as `t`: its mocks, restored when the
 // scenario ends, and the cleanups it registers with t.after().
@@ -15,9 +17,11 @@ After("@manifests", async function () {
 });
 
 
-const installed = spawnSync("kustomize", ["version"]).status === 0;
+// kustomize by its full path, found once on PATH: what runs is named, not looked up again.
+const kustomize = (process.env.PATH ?? "").split(delimiter).map((dir) => join(dir, "kustomize")).find((p) => existsSync(p));
+const installed = kustomize !== undefined && spawnSync(kustomize, ["version"]).status === 0;
 const build = (dir) => {
-  const { status, stdout, stderr } = spawnSync("kustomize", ["build", dir], { encoding: "utf8" });
+  const { status, stdout, stderr } = spawnSync(kustomize, ["build", dir], { encoding: "utf8" });
   assert.equal(status, 0, stderr);
   return stdout;
 };

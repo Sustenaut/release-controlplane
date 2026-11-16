@@ -1,8 +1,19 @@
 // What the deploy applies, where kustomize is installed, as it is in CI: a mistake here would
 // stop the deploy of both sites.
-import { test } from "node:test";
+import { After, Then } from "@cucumber/cucumber";
+import { mock as nodeMock } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+
+// What node:test gave each test as `t`: its mocks, restored when the
+// scenario ends, and the cleanups it registers with t.after().
+const cleanups = [];
+const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
+After("@manifests", async function () {
+  while (cleanups.length) await cleanups.pop()();
+  nodeMock.restoreAll();
+});
+
 
 const installed = spawnSync("kustomize", ["version"]).status === 0;
 const build = (dir) => {
@@ -11,7 +22,9 @@ const build = (dir) => {
   return stdout;
 };
 
-test("schryer's deployment is its own, with its own host, realm and list", { skip: !installed }, () => {
+Then("schryer's deployment is its own, with its own host, realm and list", function () {
+  if (!installed) return "skipped";
+  return (() => {
   const text = build("k8s-schryer");
   assert.doesNotMatch(text, /namespace: release\n/);
   assert.match(text, /namespace: release-schryer/);
@@ -23,11 +36,15 @@ test("schryer's deployment is its own, with its own host, realm and list", { ski
   assert.match(text, /ALLOWED_EMAILS/);
   assert.doesNotMatch(text, /OIDC_CLIENT_ID\n|allowed-group|email-domain/);
   assert.match(text, /value: schryer\n/);
+})(scenarioContext);
 });
 
-test("Sustenaut's deployment is unchanged by it", { skip: !installed }, () => {
+Then("Sustenaut's deployment is unchanged by it", function () {
+  if (!installed) return "skipped";
+  return (() => {
   const text = build("k8s");
   assert.doesNotMatch(text, /schryer/);
   assert.match(text, /namespace: release\n/);
   assert.match(text, /--allowed-group=release/);
+})(scenarioContext);
 });

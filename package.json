@@ -10,10 +10,13 @@
   },
   "scripts": {
     "start": "node app/server.js",
-    "test": "node --test app/test/*.test.js"
+    "test": "cucumber-js"
   },
   "dependencies": {
     "@sustenaut/integrations": "github:Sustenaut/integrations#v0.14.0",
     "pubpr": "github:Sustenaut/pubpr#v0.1.1"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.3.0"
   }
 }

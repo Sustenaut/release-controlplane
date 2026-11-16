@@ -1,0 +1,6 @@
+{
+  "default": {
+    "paths": ["app/test/features/*.feature"],
+    "import": ["app/test/features/support.js", "app/test/*.steps.js"]
+  }
+}

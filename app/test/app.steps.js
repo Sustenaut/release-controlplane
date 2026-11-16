@@ -84,7 +84,7 @@ Then("the board groups by project, worst first, and says when there is none", fu
   assert.match(text, /private/);
   assert.match(text, /aria-current="page">Board/);
   assert.match((await get(handler(fakes({ storage: { latest: async () => null } })), "/")).text, /No board yet/);
-})(scenarioContext);
+})();
 });
 
 Then("what a repository says is escaped, everywhere", function () {
@@ -92,7 +92,7 @@ Then("what a repository says is escaped, everywhere", function () {
   const { text } = await get(handler(fakes()), "/");
   assert.ok(!text.includes("<b>old</b>") && !text.includes("<issues>"));
   assert.ok(text.includes(escape("3 open <issues>")));
-})(scenarioContext);
+})();
 });
 
 Then("the state shows each repository's roles", function () {
@@ -100,7 +100,7 @@ Then("the state shows each repository's roles", function () {
   const { text } = await get(handler(fakes()), "/state");
   assert.match(text, /bad<\/td><td>·<\/td><td class="on">on<\/td><td class="off">off<\/td><td class="off">off/);
   assert.match(text, /good<\/td><td>tools<\/td><td class="on">on<\/td><td class="on">on<\/td><td class="on">on/);
-})(scenarioContext);
+})();
 });
 
 Then("the history shows state changes in words, and the board's snapshots", function () {
@@ -112,7 +112,7 @@ Then("the history shows state changes in words, and the board's snapshots", func
   assert.match(text, /Govern good/);
   assert.match(text, /aaaaaaaaaaaa/);
   assert.ok(!text.includes("a".repeat(13)), "a snapshot's hash is shortened");
-})(scenarioContext);
+})();
 });
 
 Then("someone without the role gets in nowhere", function () {
@@ -123,7 +123,7 @@ Then("someone without the role gets in nowhere", function () {
     assert.equal(status, 403);
     assert.ok(!text.includes("good"));
   }
-})(scenarioContext);
+})();
 });
 
 Then("the health checks need no sign-in, and tell nothing", function () {
@@ -133,7 +133,7 @@ Then("the health checks need no sign-in, and tell nothing", function () {
     assert.equal(status, 200);
     assert.equal(text, "ok\n");
   }
-})(scenarioContext);
+})();
 });
 
 Then("without what it needs the app is not ready, but still alive", function () {
@@ -143,7 +143,7 @@ Then("without what it needs the app is not ready, but still alive", function () 
   assert.equal(ready.status, 503);
   assert.equal(ready.text, "not ready\n");
   assert.equal((await get(handle, "/livez", "")).status, 200);
-})(scenarioContext);
+})();
 });
 
 Then("readiness is checked at most every 30 seconds, a failure too", function () {
@@ -163,7 +163,7 @@ Then("readiness is checked at most every 30 seconds, a failure too", function ()
   clock = 30_000;
   assert.equal(await ready(), null);
   assert.equal(calls, 2);
-})(scenarioContext);
+})();
 });
 
 Then("only GET and POST are taken, and an unknown page is not found", function () {
@@ -172,7 +172,7 @@ Then("only GET and POST are taken, and an unknown page is not found", function (
   assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 404);
   assert.equal((await get(handler(fakes()), "/example-org")).status, 404);
   assert.equal((await get(handler(fakes()), "/nope")).status, 404);
-})(scenarioContext);
+})();
 });
 
 Then("pages allow no scripts and are not stored", function () {
@@ -180,7 +180,7 @@ Then("pages allow no scripts and are not stored", function () {
   const { headers } = await get(handler(fakes()), "/");
   assert.match(headers.get("content-security-policy"), /default-src 'none'/);
   assert.equal(headers.get("cache-control"), "no-store");
-})(scenarioContext);
+})();
 });
 
 Then("what can't be read is said on the page", function () {
@@ -189,7 +189,7 @@ Then("what can't be read is said on the page", function () {
   const { status, text } = await get(handler(fakes({ storage: failing })), "/");
   assert.equal(status, 200);
   assert.match(text, /storage said 500/);
-})(scenarioContext);
+})();
 });
 
 Then("the page names only this deployment's owner, and reads only its tenant and repository", function () {
@@ -202,7 +202,7 @@ Then("the page names only this deployment's owner, and reads only its tenant and
   for (const path of ["/", "/state", "/history"]) assert.equal((await get(handle, path)).status, 200);
   assert.ok(asked.length >= 3);
   assert.ok(asked.every((o) => o === OWNER));
-})(scenarioContext);
+})();
 });
 
 Then("a read is kept for a minute, and a failure isn't kept", function () {
@@ -217,7 +217,7 @@ Then("a read is kept for a minute, and a failure isn't kept", function () {
   assert.equal(await read("a"), 2);
   time = 60_000;
   assert.equal(await read("a"), 3);
-})(scenarioContext);
+})();
 });
 
 Then("a commit's state file is read once, and a failed read is tried again", function () {
@@ -234,7 +234,7 @@ Then("a commit's state file is read once, and a failed read is tried again", fun
   await history(OWNER);
   await history(OWNER);
   assert.equal(reads, 2);
-})(scenarioContext);
+})();
 });
 
 Then("changes says what moved, added and went", function () {
@@ -244,7 +244,7 @@ Then("changes says what moved, added and went", function () {
   assert.deepEqual(changes(before, after), ["a: board off", "b removed", "c: project y", "d added"]);
   assert.deepEqual(changes(after, after), []);
   assert.deepEqual(changes({ repos: { a: roles({ project: "x" }) } }, { repos: { a: roles() } }), ["a: project none"]);
-})(scenarioContext);
+})();
 });
 
 Then("the app's token is a signed JWT GitHub can check", function () {
@@ -255,7 +255,7 @@ Then("the app's token is a signed JWT GitHub can check", function () {
   assert.equal(claims.iss, "123");
   assert.ok(claims.iat < 1000 && claims.exp - claims.iat <= 600);
   assert.ok(createVerify("RSA-SHA256").update(`${head}.${body}`).verify(createPublicKey(privateKey), signature, "base64url"));
-})(scenarioContext);
+})();
 });
 
 Then("the reader reads as each owner's installation, Contents read only, and keeps its token", function () {
@@ -286,7 +286,7 @@ Then("the reader reads as each owner's installation, Contents read only, and kee
   time += 3_600_000;
   await github.state(OWNER);
   assert.equal(calls.filter((c) => c.url.includes("installations/11")).length, 2, "a token near its end is replaced");
-})(scenarioContext);
+})();
 });
 
 // The app's Caller, on a stand-in for fetch, with its records kept and no waits.
@@ -319,7 +319,7 @@ Then("storage reads the token afresh, names itself, and a missing head is no boa
   // Each read is a record of storage.api's read, the app's own.
   assert.deepEqual(sink.records.map((r) => [r.repo, r.plugin, r.operation, r.status]), [
     [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 404], [REPO, "storage.api", "read", 404]]);
-})(scenarioContext);
+})();
 });
 
 Then("storage refusing is an error that says why, not an empty board", function () {
@@ -327,7 +327,7 @@ Then("storage refusing is an error that says why, not an empty board", function 
   const { caller } = calling(async () => Response.json({ error: "k8s:x may not read here" }, { status: 403 }));
   const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
   await assert.rejects(store.latest({ tenant: "x" }), /storage said 403: k8s:x may not read here/);
-})(scenarioContext);
+})();
 });
 
 Then("storage that doesn't answer is an error that says so, and a person isn't kept waiting on retries", function () {
@@ -343,7 +343,7 @@ Then("storage that doesn't answer is an error that says so, and a person isn't k
   assert.ok(seen[0] instanceof AbortSignal);
   const failing = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: calling(async () => Response.json({ error: "down" }, { status: 503 })).caller, readFile: async () => "t" });
   await assert.rejects(failing.latest({ tenant: "x" }), /storage said 503: down/);
-})(scenarioContext);
+})();
 });
 
 Then("the records go to the call log's buffer as the pod, with its storage token", function () {
@@ -365,7 +365,7 @@ Then("the records go to the call log's buffer as the pod, with its storage token
   assert.equal(sink.flushOnWrite, false, "a page never waits on the call log");
   const quiet = defaultCaller();
   assert.deepEqual([quiet.repo, quiet.app], [REPO, "web"]);
-})(scenarioContext);
+})();
 });
 
 Then("the config is for one owner, and needs everything", function () {
@@ -379,7 +379,7 @@ Then("the config is for one owner, and needs everything", function () {
     assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
   }
   assert.throws(() => configFrom({ ...env, RELEASE_READER_APP_INSTALLATION_ID: "x" }), /must be a number/);
-})(scenarioContext);
+})();
 });
 
 Then("the board says when it was last checked, apart from when it last changed", function () {
@@ -389,14 +389,14 @@ Then("the board says when it was last checked, apart from when it last changed",
   assert.match(text, /Last checked <a href="https:\/\/github.com\/x\/runs\/1">2026-10-31T09:13:00Z<\/a>\./);
   assert.match(text, /2 repos: 1 A, 1 D/);
   assert.ok(!text.includes("It ended"));
-})(scenarioContext);
+})();
 });
 
 Then("a run that didn't pass says so", function () {
   return (async () => {
   const boardRun = async () => ({ time: "t", conclusion: "failure", url: "https://u" });
   assert.match((await get(handler({ ...fakes(), boardRun }), "/")).text, /It ended: failure/);
-})(scenarioContext);
+})();
 });
 
 Then("with no workflow, or GitHub not answering, the board still shows, without that line", function () {
@@ -406,7 +406,7 @@ Then("with no workflow, or GitHub not answering, the board still shows, without 
   assert.equal(failing.status, 200);
   assert.ok(!failing.text.includes("Last checked"));
   assert.match(failing.text, /example-org\/good/);
-})(scenarioContext);
+})();
 });
 
 Then("the last run comes from the workflow named, with no token, as github.board-read", function () {
@@ -423,7 +423,7 @@ Then("the last run comes from the workflow named, with no token, as github.board
   assert.deepEqual([sink.records[0].plugin, sink.records[0].operation], ["github.board-read", "read"]);
   assert.equal(await lastRun("o/r/b.yml", calling(async () => Response.json({ workflow_runs: [] })))(), null);
   await assert.rejects(lastRun("o/r/b.yml", calling(async () => new Response("", { status: 403 })))(), /GitHub said 403/);
-})(scenarioContext);
+})();
 });
 
 Then("GitHub failing or not answering for the last run is an error that says so, after its retries", function () {
@@ -433,7 +433,7 @@ Then("GitHub failing or not answering for the last run is an error that says so,
   assert.deepEqual(failing.naps, [1, 2], "a board read is scheduled work: three tries");
   await assert.rejects(lastRun("o/r/b.yml", calling(async () => { throw new TypeError("fetch failed"); }))(), /GitHub didn't answer: no answer: fetch failed/);
   await assert.rejects(lastRun("o/r/b.yml", { caller: { call: async () => { throw new RangeError("not registered"); } } })(), RangeError);
-})(scenarioContext);
+})();
 });
 
 Then("reading takes the release role, by its exact name", function () {
@@ -445,7 +445,7 @@ Then("reading takes the release role, by its exact name", function () {
   assert.equal(await seen("controller"), 403);
   assert.equal(await seen("role:release"), 403);
   assert.equal(await seen("released"), 403);
-})(scenarioContext);
+})();
 });
 
 function keycloakAnswers(answers, now = Date.now) {
@@ -477,7 +477,7 @@ Then("the page's answer to a sign-in that has ended: a read goes to sign in, a c
   } finally {
     server.close();
   }
-})(scenarioContext);
+})();
 });
 
 Then("with Keycloak down someone vouched for reads, without a form; anyone else gets a 503", function () {
@@ -499,7 +499,7 @@ Then("with Keycloak down someone vouched for reads, without a form; anyone else 
   assert.doesNotMatch(text, /<form/);
   assert.equal((await get(withWriter, "/state", "me@example.org", "POST", "t")).status, 503);
   assert.equal((await get(handle, "/state", "other@example.org", "GET", "t")).status, 503);
-})(scenarioContext);
+})();
 });
 
 Then("with an email list the config needs no sign-in client", function () {
@@ -509,5 +509,5 @@ Then("with an email list the config needs no sign-in client", function () {
   assert.deepEqual(config.allowedEmails, ["me@x.org"]);
   assert.equal(config.clientId, undefined);
   assert.throws(() => configFrom({ ...env, ALLOWED_EMAILS: "" }), /OIDC_CLIENT_ID is not set/);
-})(scenarioContext);
+})();
 });

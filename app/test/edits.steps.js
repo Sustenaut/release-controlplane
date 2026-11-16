@@ -81,7 +81,7 @@ Then("an operator's state page is a form, with the repositories not in the state
   assert.match(text, /name="good.govern"/);
   assert.match(text, /class="absent"[^]*unlisted/);
   assert.match(text, /name="note" required/);
-})(scenarioContext);
+})();
 });
 
 Then("someone not an operator sees no form, and an owner with no writer has none either", function () {
@@ -91,7 +91,7 @@ Then("someone not an operator sees no form, and an owner with no writer has none
   assert.ok(!text.includes("unlisted"));
   assert.ok(!(await call(app({ owner: READ_ONLY }).handle, "/state")).text.includes("<form"));
   assert.ok(!(await call(app({ noSave: true }).handle, "/state")).text.includes("<form"));
-})(scenarioContext);
+})();
 });
 
 Then("a save opens a pull request with the new state, the note and who asked", function () {
@@ -107,7 +107,7 @@ Then("a save opens a pull request with the new state, the note and who asked", f
   assert.equal(saved[0].sha, SHA);
   assert.equal(saved[0].state.repos.good.govern, true);
   assert.equal(saved[0].state.owner, "example-org");
-})(scenarioContext);
+})();
 });
 
 Then("what GitHub answered is said plainly", function () {
@@ -122,7 +122,7 @@ Then("what GitHub answered is said plainly", function () {
     assert.equal(result.status, status);
     assert.match(result.text, words);
   }
-})(scenarioContext);
+})();
 });
 
 Then("only an operator may save, and only from this site", function () {
@@ -136,7 +136,7 @@ Then("only an operator may save, and only from this site", function () {
   assert.equal((await post(handle, "/other", { body: SAVE })).status, 404);
   assert.equal((await post(app({ noSave: true }).handle, "/state", { body: SAVE })).status, 403);
   assert.deepEqual(saved, []);
-})(scenarioContext);
+})();
 });
 
 Then("a bad form says why, and saves nothing", function () {
@@ -158,7 +158,7 @@ Then("a bad form says why, and saves nothing", function () {
   await bad([["base", SHA], ["note", "n"], ["new-label", "Bad Label"], ["repo", "good"], ["good.project", "__new__"]], /A label is lower case/);
   await bad([["base", SHA], ["note", "n"], ["new-label", "spare"], ["repo", "good"], ["good.project", "tools"]], /wouldn&#39;t be kept/);
   assert.deepEqual(saved, []);
-})(scenarioContext);
+})();
 });
 
 Then("a form too large is refused", function () {
@@ -177,7 +177,7 @@ Then("a form too large is refused", function () {
     server.close();
     server.closeAllConnections();
   }
-})(scenarioContext);
+})();
 });
 
 Then("a failure saving is said, not thrown", function () {
@@ -190,7 +190,7 @@ Then("a failure saving is said, not thrown", function () {
   const { status, text } = await post(handle, "/state", { body: SAVE });
   assert.equal(status, 502);
   assert.match(text, /GitHub said 500/);
-})(scenarioContext);
+})();
 });
 
 Then("a save reads the state afresh, and doesn't show the old one after", function () {
@@ -202,7 +202,7 @@ Then("a save reads the state afresh, and doesn't show the old one after", functi
   assert.equal(reads(), before + 1);
   await call(handle, "/state");
   assert.equal(reads(), before + 2);
-})(scenarioContext);
+})();
 });
 
 Then("history offers going back to any but the newest, and reverting saves the old file", function () {
@@ -217,7 +217,7 @@ Then("history offers going back to any but the newest, and reverting saves the o
   assert.equal(status, 200);
   assert.deepEqual(saved[0].state, OLD);
   assert.equal(saved[0].note, "Undo it");
-})(scenarioContext);
+})();
 });
 
 Then("the state page offers the labels in use, the current one chosen, and a new one", function () {
@@ -227,7 +227,7 @@ Then("the state page offers the labels in use, the current one chosen, and a new
   assert.match(text, /<select name="bad.project"[^>]*><option value="" selected>None/);
   assert.match(text, /<select name="unlisted.project"/);
   assert.match(text, /name="new-label"/);
-})(scenarioContext);
+})();
 });
 
 Then("a new label goes to each repository set to it, and then is one of the labels", function () {
@@ -238,7 +238,7 @@ Then("a new label goes to each repository set to it, and then is one of the labe
   assert.equal(made.repos.bad.project, "shiny");
   assert.deepEqual(labelsOf(made), ["shiny"]);
   assert.deepEqual(labelsOf(STATE), ["tools"]);
-})(scenarioContext);
+})();
 });
 
 Then("stateFrom keeps what the form doesn't name, adds on a role, and drops a project", function () {
@@ -249,14 +249,14 @@ Then("stateFrom keeps what the form doesn't name, adds on a role, and drops a pr
   assert.deepEqual(made.repos.good, { board: true, protect: false, govern: false }, "project emptied");
   assert.equal(made.repos.unlisted, undefined, "no role, so it doesn't join");
   assert.deepEqual(made.repos.more, { project: "pub", board: false, protect: false, govern: true });
-})(scenarioContext);
+})();
 });
 
 Then("a repository in the state stays even with every role off", function () {
   return (() => {
   const made = stateFrom(new URLSearchParams("repo=good"), STATE, []);
   assert.deepEqual(made.repos.good, { board: false, protect: false, govern: false });
-})(scenarioContext);
+})();
 });
 
 Then("form checks throw FormError", function () {
@@ -264,14 +264,14 @@ Then("form checks throw FormError", function () {
   assert.throws(() => noteFrom(new URLSearchParams()), FormError);
   assert.throws(() => shaFrom(new URLSearchParams("base=zz")), FormError);
   assert.equal(noteFrom(new URLSearchParams("note=a%0Ab")), "a b");
-})(scenarioContext);
+})();
 });
 
 Then("the file is stable: sorted, indented, ending in a newline", function () {
   return (() => {
   assert.equal(stateText({ owner: "o", repos: { b: { board: true }, a: { board: false } } }),
     '{\n  "owner": "o",\n  "repos": {\n    "a": {\n      "board": false\n    },\n    "b": {\n      "board": true\n    }\n  }\n}\n');
-})(scenarioContext);
+})();
 });
 
 Then("the writer proposes one file, expecting what was read, merging itself, with its own token", function () {
@@ -300,7 +300,7 @@ Then("the writer proposes one file, expecting what was read, merging itself, wit
   assert.equal(await token(), "w");
   assert.match(asked[0].url, /installations\/33\/access_tokens/);
   assert.deepEqual(JSON.parse(asked[0].body), { permissions: { contents: "write", pull_requests: "write" } });
-})(scenarioContext);
+})();
 });
 
 Then("the reader reads the file with its sha, and lists every page of repositories", function () {
@@ -316,7 +316,7 @@ Then("the reader reads the file with its sha, and lists every page of repositori
   const names = await github.repositories(OWNER);
   assert.equal(names.length, 101);
   assert.ok(names.includes("last"));
-})(scenarioContext);
+})();
 });
 
 Then("the config takes a writer installation", function () {
@@ -327,7 +327,7 @@ Then("the config takes a writer installation", function () {
   assert.equal(config.writerId, "8");
   assert.equal(configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: undefined }).owner.writerInstallation, undefined);
   assert.throws(() => configFrom({ ...env, RELEASE_STATE_WRITER_INSTALLATION_ID: "x" }), /must be a number/);
-})(scenarioContext);
+})();
 });
 
 const secretsOff = (repo) => ({ repo, kind: "package", overall: "B", grades: { security: { letter: "B", steps: [
@@ -342,7 +342,7 @@ Then("an operator sees what fixes secret scanning: a button, or the next apply",
   assert.equal(text.match(/action="\/state\/turn-on"/g).length, 1);
   assert.match(text, /name="repo" value="bad"/);
   assert.match(text, /Protect is on, so the next apply turns these on/);
-})(scenarioContext);
+})();
 });
 
 Then("a reader sees the notch, and no way to fix it", function () {
@@ -351,7 +351,7 @@ Then("a reader sees the notch, and no way to fix it", function () {
   const { text } = await call(handle, "/", { email: "reader@x.org" });
   assert.match(text, /push protection off/);
   assert.doesNotMatch(text, /turn-on|next apply/);
-})(scenarioContext);
+})();
 });
 
 Then("nothing to fix shows no button", function () {
@@ -360,7 +360,7 @@ Then("nothing to fix shows no button", function () {
     { text: "Secret scanning settings: not available", delta: 0, facts: ["secret_protection"] }] } } }] };
   const { text } = await call(app({ board, state: OFF_STATE }).handle, "/");
   assert.doesNotMatch(text, /turn-on|next apply/);
-})(scenarioContext);
+})();
 });
 
 Then("Turn on saves that repository's protect, and nothing else", function () {
@@ -371,7 +371,7 @@ Then("Turn on saves that repository's protect, and nothing else", function () {
   assert.deepEqual(saved[0].state, { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles() } });
   assert.equal(saved[0].sha, SHA);
   assert.equal(saved[0].note, "Turn on");
-})(scenarioContext);
+})();
 });
 
 Then("Turn on refuses a repository not in the state, a reader, and another site", function () {
@@ -383,5 +383,5 @@ Then("Turn on refuses a repository not in the state, a reader, and another site"
   assert.equal((await post(handle, "/state/turn-on", { email: "reader@x.org", body: body("bad") })).status, 403);
   assert.equal((await post(handle, "/state/turn-on", { origin: "https://evil.example", body: body("bad") })).status, 403);
   assert.equal(saved.length, 0);
-})(scenarioContext);
+})();
 });

@@ -40,7 +40,7 @@ Then("it asks with the client's id and secret, and the person's token", function
   assert.equal(k.hashUrl, "https://auth.test/realms/team/app-registration/sustenaut.eu/access-state");
   assert.equal(k.basic, `Basic ${Buffer.from("sustenaut.eu:a%20b").toString("base64")}`);
   assert.equal(k.bearer, "Bearer tok");
-})(scenarioContext);
+})();
 });
 
 Then("an unchanged hash makes no second full check, and a burst makes one fetch", function () {
@@ -56,7 +56,7 @@ Then("an unchanged hash makes no second full check, and a burst makes one fetch"
   await k.check("a@x.org", "t");
   assert.equal(k.hashes, 2);
   assert.equal(k.userinfos, 2);
-})(scenarioContext);
+})();
 });
 
 Then("a changed hash takes the role away at the next request after its 2 seconds", function () {
@@ -70,7 +70,7 @@ Then("a changed hash takes the role away at the next request after its 2 seconds
   const { allowed, reason } = await k.check("a@x.org", "t");
   assert.equal(allowed, false);
   assert.equal(reason, NO_ROLE);
-})(scenarioContext);
+})();
 });
 
 Then("a full check comes after 5 minutes even with the hash unchanged", function () {
@@ -83,7 +83,7 @@ Then("a full check comes after 5 minutes even with the hash unchanged", function
   k.time += 1;
   await k.check("a@x.org", "t");
   assert.equal(k.userinfos, 2);
-})(scenarioContext);
+})();
 });
 
 Then("a refused token, or none, is sent to sign in, and forgotten", function () {
@@ -100,7 +100,7 @@ Then("a refused token, or none, is sent to sign in, and forgotten", function () 
     assert.equal((await k.check("a@x.org", "t")).reason, UNAVAILABLE);
   }
   assert.equal((await keycloak().check("a@x.org", "")).reason, SIGN_IN);
-})(scenarioContext);
+})();
 });
 
 Then("Keycloak unreachable: someone vouched for reads on, changes are refused, and so is anyone else", function () {
@@ -115,7 +115,7 @@ Then("Keycloak unreachable: someone vouched for reads on, changes are refused, a
   assert.equal(reading.roles.has("controller"), true);
   assert.equal((await k.check("a@x.org", "t", { write: true })).reason, UNAVAILABLE);
   assert.equal((await k.check("b@x.org", "t")).reason, UNAVAILABLE);
-})(scenarioContext);
+})();
 });
 
 Then("the 503 before auth's key is set counts as unreachable", function () {
@@ -123,7 +123,7 @@ Then("the 503 before auth's key is set counts as unreachable", function () {
   const k = keycloak();
   k.hashStatus = 503;
   assert.equal((await k.check("a@x.org", "t")).reason, UNAVAILABLE);
-})(scenarioContext);
+})();
 });
 
 Then("a stored hash already out of date isn't vouched for", function () {
@@ -137,7 +137,7 @@ Then("a stored hash already out of date isn't vouched for", function () {
   k.time += 2_000;
   assert.equal((await k.check("b@x.org", "t")).reason, DEGRADED);
   assert.equal((await k.check("a@x.org", "t")).reason, UNAVAILABLE);
-})(scenarioContext);
+})();
 });
 
 Then("userinfo failing with the hash answering goes on the last answer", function () {
@@ -148,7 +148,7 @@ Then("userinfo failing with the hash answering goes on the last answer", functio
   k.userinfoStatus = 500;
   assert.equal((await k.check("a@x.org", "t")).reason, DEGRADED);
   assert.equal((await k.check("a@x.org", "t", { write: true })).reason, UNAVAILABLE);
-})(scenarioContext);
+})();
 });
 
 Then("the role is matched by its exact name, and a bad claim gives nothing", function () {
@@ -158,7 +158,7 @@ Then("the role is matched by its exact name, and a bad claim gives nothing", fun
     k.roles = claim;
     assert.equal((await k.check("a@x.org", "t")).reason, NO_ROLE);
   }
-})(scenarioContext);
+})();
 });
 
 Then("it remembers at most so many people", function () {
@@ -169,7 +169,7 @@ Then("it remembers at most so many people", function () {
   await small("b@x.org", "t");
   await small("a@x.org", "t");
   assert.equal(k.userinfos, 3);
-})(scenarioContext);
+})();
 });
 
 Then("an email list lets those on it do everything, and asks nobody", function () {
@@ -183,5 +183,5 @@ Then("an email list lets those on it do everything, and asks nobody", function (
   assert.equal(off.allowed, false);
   assert.equal(off.reason, NO_ROLE);
   assert.equal(off.roles.size, 0);
-})(scenarioContext);
+})();
 });

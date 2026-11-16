@@ -36,7 +36,7 @@ Then("schryer's deployment is its own, with its own host, realm and list", funct
   assert.match(text, /ALLOWED_EMAILS/);
   assert.doesNotMatch(text, /OIDC_CLIENT_ID\n|allowed-group|email-domain/);
   assert.match(text, /value: schryer\n/);
-})(scenarioContext);
+})();
 });
 
 Then("Sustenaut's deployment is unchanged by it", function () {
@@ -46,5 +46,5 @@ Then("Sustenaut's deployment is unchanged by it", function () {
   assert.doesNotMatch(text, /schryer/);
   assert.match(text, /namespace: release\n/);
   assert.match(text, /--allowed-group=release/);
-})(scenarioContext);
+})();
 });

@@ -2,6 +2,7 @@
   "kind": "service",
   "ci": {
     "with": {
+      "sonar-args": "-Dsonar.tests=app/test,tests -Dsonar.exclusions=app/test/**,tests/**",
       "setup": "make venv node",
       "test": "make functional",
       "shellcheck": "with-secrets scripts/*.sh"

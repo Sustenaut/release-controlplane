@@ -61,14 +61,14 @@ tenant, so neither can see the other.
   `state.json`, as the reader app, and sends the operator a direct message saying what
   differs when a repository's GitHub variables aren't what the state gives them, as after
   a change by hand. It puts nothing back, and its log says only whether they differ.
-  Its `pubrules` job runs `bin/pubkit-facts` on `state.json`, as the reader app: for each
+  Its `pubrules` job runs `bin/pubrules-facts` on `state.json`, as the reader app: for each
   repository on the board, two facts every night, passes as well as failures, its pubrules
   pin against pubrules' latest release and main's `pubrules sync --check`, with the pinned and
   latest versions, main's commit and run, and what to run to fix it. They go to storage's
-  private `pubkit-checks` buffer, as the job's OpenID Connect token; the integrations ingest
-  loads them into BigQuery's `platform.pubkit_checks`, observability's `pubkit_drift` rule
+  private `pubrules-checks` buffer, as the job's OpenID Connect token; the integrations ingest
+  loads them into BigQuery's `platform.pubrules_checks`, observability's `pubrules_drift` rule
   opens a signal per failing check, and the notifier posts it with its fix. The deploy
-  block declares the tenant and integrations' `INGEST_PUBKIT_CHECKS`. Its log and summary
+  block declares the tenant and integrations' `INGEST_PUBRULES_CHECKS`. Its log and summary
   give only counts.
 
 ## Its calls

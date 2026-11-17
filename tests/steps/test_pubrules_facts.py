@@ -1,4 +1,4 @@
-"""Steps for bin/pubkit-facts, against a fake gh that answers from a JSON file."""
+"""Steps for bin/pubrules-facts, against a fake gh that answers from a JSON file."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def write(world, tmp_path):
     (tmp_path / "state.json").write_text(json.dumps(world["state"]))
     env = {**os.environ, "FAKE_WORLD": str(tmp_path / "world.json"),
            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
-    proc = subprocess.run([sys.executable, str(ROOT / "bin" / "pubkit-facts"), str(tmp_path / "state.json"),
+    proc = subprocess.run([sys.executable, str(ROOT / "bin" / "pubrules-facts"), str(tmp_path / "state.json"),
                            "--out", str(tmp_path / "facts.avro")], capture_output=True, text=True, env=env, check=False)
     facts = list(fastavro.reader(io.BytesIO((tmp_path / "facts.avro").read_bytes()))) if proc.returncode == 0 else []
     return {"proc": proc, "facts": facts}
@@ -140,18 +140,18 @@ def nightly():
     return yaml.safe_load((ROOT / ".github/workflows/fleet-nightly.yml").read_text())["jobs"]["pubrules"]
 
 
-@then("its pubrules job writes the facts to storage's pubkit-checks tenant as the job's own token")
+@then("its pubrules job writes the facts to storage's pubrules-checks tenant as the job's own token")
 def to_storage(job):
     assert job["permissions"]["id-token"] == "write"
-    run = next(s["run"] for s in job["steps"] if "pubkit-facts" in s.get("run", ""))
-    assert "bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks" in run
+    run = next(s["run"] for s in job["steps"] if "pubrules-facts" in s.get("run", ""))
+    assert "bin/pubrules-facts state.json --url https://storage.sustenaut.eu --tenant pubrules-checks" in run
 
 
 @then("it prints only the counts")
 def counts(job):
     text = yaml.safe_dump(job)
     assert "slack" not in text.lower() and "upload-artifact" not in text
-    step = next(s for s in job["steps"] if "pubkit-facts" in s.get("run", ""))
+    step = next(s for s in job["steps"] if "pubrules-facts" in s.get("run", ""))
     assert "--out" not in step["run"] and "cat " not in step["run"]
     # bash with pipefail, so a refused write fails the job though tee runs last.
     assert step["shell"] == "bash"

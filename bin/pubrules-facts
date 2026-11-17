@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The platform's nightly checks of each repository against pubrules, as facts:
 
-    bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks
-    bin/pubkit-facts state.json --out checks.avro          # the file alone, sent nowhere
+    bin/pubrules-facts state.json --url https://storage.sustenaut.eu --tenant pubrules-checks
+    bin/pubrules-facts state.json --out checks.avro          # the file alone, sent nowhere
 
 For each repository state.json puts on the board it reads, as the token in GH_TOKEN
 allows, two things, and records both whatever they show, passes as well as failures:
@@ -17,8 +17,8 @@ allows, two things, and records both whatever they show, passes as well as failu
 
 Each is one row (observed_at, repository, check, status pass|behind|fail|unknown, pinned, latest,
 main_commit, run_url, fix, run_started_at), all of them one Avro file in the tenant's
-buffer (inbox/pubkit-checks/), which the integrations ingest pod loads into BigQuery's
-platform.pubkit_checks, where observability's pubkit_drift rule reads them. The schema is
+buffer (inbox/pubrules-checks/), which the integrations ingest pod loads into BigQuery's
+platform.pubrules_checks, where observability's pubrules_drift rule reads them. The schema is
 integrations' PUBRULES_CHECK_SCHEMA. It writes as the GitHub Actions job's OpenID Connect
 token, for the audience that is the URL's host name.
 
@@ -51,10 +51,10 @@ PIN = re.compile(r"/pubrules-(\d+\.\d+\.\d+)-py3-none-any\.whl")
 # job's first line.
 SYNC_STEPS = ("pubrules sync --check", "make sync-check", "managed files are in step",
               "Run python -m venv .venv")
-FOLDER = "inbox/pubkit-checks/"
+FOLDER = "inbox/pubrules-checks/"
 # Named, as pubfleet board-publish is: Cloudflare, in front of storage, turns away
 # Python's default User-Agent (error code 1010) before storage sees the request.
-AGENT = "release-controlplane-pubkit-facts"
+AGENT = "release-controlplane-pubrules-facts"
 BUMP = "`git latest && ./pubrules bump`, then open its PR"
 GOVERNED = "its nightly update PR moves it"
 SYNC = "`git latest && ./pubrules sync`, then open its PR"
@@ -63,9 +63,9 @@ GRACE_DAYS = 7
 # How far back main's commits are read for a run whose sync check ran.
 SYNC_RUNS = 10
 _TIME = {"type": "long", "logicalType": "timestamp-micros"}
-# integrations' PUBRULES_CHECK_SCHEMA, the columns of platform.pubkit_checks.
+# integrations' PUBRULES_CHECK_SCHEMA, the columns of platform.pubrules_checks.
 SCHEMA = fastavro.parse_schema({
-    "type": "record", "name": "pubkit_check", "fields": [
+    "type": "record", "name": "pubrules_check", "fields": [
         {"name": "observed_at", "type": _TIME},
         {"name": "repository", "type": "string"},
         {"name": "check", "type": "string"},
@@ -201,7 +201,7 @@ def put(url: str, tenant: str, name: str, data: bytes) -> None:
 
 
 def main(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="pubkit-facts")
+    p = argparse.ArgumentParser(prog="pubrules-facts")
     p.add_argument("state", type=Path)
     p.add_argument("--url")
     p.add_argument("--tenant")
@@ -212,7 +212,7 @@ def main(argv: list[str]) -> int:
     state = json.loads(args.state.read_text(encoding="utf-8"))
     release = gh("repos/Sustenaut/pubrules/releases/latest")
     if not release:
-        print("pubkit-facts: pubrules' latest release can't be read", file=sys.stderr)
+        print("pubrules-facts: pubrules' latest release can't be read", file=sys.stderr)
         return 2
     now = datetime.now(timezone.utc)
     started = now.replace(microsecond=0)
@@ -224,7 +224,7 @@ def main(argv: list[str]) -> int:
         try:
             put(args.url, args.tenant, place(started, data), data)
         except Refused as e:
-            print(f"pubkit-facts: {e}", file=sys.stderr)
+            print(f"pubrules-facts: {e}", file=sys.stderr)
             return 1
     failed = sum(1 for r in found if r["status"] == "fail")
     print(f"{len(found)} checks written, {failed} failing")

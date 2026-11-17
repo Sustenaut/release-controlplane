@@ -178,7 +178,7 @@
       },
       {
         "type": "storage.tenant",
-        "name": "pubkit-checks",
+        "name": "pubrules-checks",
         "storage": "Sustenaut/storage",
         "url": "https://storage.sustenaut.eu",
         "write": [
@@ -190,14 +190,14 @@
       {
         "type": "github.variable-entry",
         "repository": "Sustenaut/integrations",
-        "variable": "INGEST_PUBKIT_CHECKS",
+        "variable": "INGEST_PUBRULES_CHECKS",
         "path": "/tenant",
-        "value": "pubkit-checks"
+        "value": "pubrules-checks"
       },
       {
         "type": "github.variable-entry",
         "repository": "Sustenaut/integrations",
-        "variable": "INGEST_PUBKIT_CHECKS",
+        "variable": "INGEST_PUBRULES_CHECKS",
         "path": "/dataset",
         "value": "platform"
       },

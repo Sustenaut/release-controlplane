@@ -1,7 +1,7 @@
 Feature: The nightly keeps each repository's checks against pubrules as facts
-  bin/pubkit-facts reads what state.json puts on the board through gh, and writes two rows
+  bin/pubrules-facts reads what state.json puts on the board through gh, and writes two rows
   for each repository, its pin and its sync check, passes as well as failures, as one Avro
-  file for the platform's pubkit-checks buffer. It prints only counts.
+  file for the platform's pubrules-checks buffer. It prints only counts.
 
   Scenario: Every repository on the board gets both rows, whatever they show
     Given pubrules' latest release is "0.37.0"
@@ -37,5 +37,5 @@ Feature: The nightly keeps each repository's checks against pubrules as facts
 
   Scenario: The nightly sends the facts only to the private tenant
     When I read the nightly workflow
-    Then its pubrules job writes the facts to storage's pubkit-checks tenant as the job's own token
+    Then its pubrules job writes the facts to storage's pubrules-checks tenant as the job's own token
     And it prints only the counts

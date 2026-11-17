@@ -96,9 +96,9 @@ jobs:
 
   # Each repository on the board against pubrules, every night, as facts: its pin against
   # pubrules' latest release, and main's sync check, passes as well as failures, one row
-  # each (bin/pubkit-facts). They go to storage's private pubkit-checks buffer, which the
-  # integrations ingest loads into BigQuery's platform.pubkit_checks, where observability's
-  # pubkit_drift rule opens a signal on a failure and the notifier posts its fix. This
+  # each (bin/pubrules-facts). They go to storage's private pubrules-checks buffer, which the
+  # integrations ingest loads into BigQuery's platform.pubrules_checks, where observability's
+  # pubrules_drift rule opens a signal on a failure and the notifier posts its fix. This
   # repository is public and the state may name private repositories, so the facts go
   # only to the private tenant; the log and the summary give counts.
   pubrules:
@@ -126,5 +126,5 @@ jobs:
         shell: bash
         run: |
           gh api -H 'Accept: application/vnd.github.raw+json' repos/Sustenaut/release-state/contents/state.json > state.json
-          python bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks \
+          python bin/pubrules-facts state.json --url https://storage.sustenaut.eu --tenant pubrules-checks \
             | tee -a "$GITHUB_STEP_SUMMARY"

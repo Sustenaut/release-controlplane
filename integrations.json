@@ -12,7 +12,7 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
-        "bin/pubkit-facts"
+        "bin/pubrules-facts"
       ],
       "mode": "required"
     },
@@ -32,7 +32,7 @@
       "plugin": "github.board-read",
       "paths": [
         "app/runs.js",
-        "bin/pubkit-facts"
+        "bin/pubrules-facts"
       ],
       "mode": "required"
     },
@@ -50,7 +50,7 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
-        "scripts/go-live-pubkit-facts.sh"
+        "scripts/go-live-pubrules-facts.sh"
       ],
       "mode": "required"
     },

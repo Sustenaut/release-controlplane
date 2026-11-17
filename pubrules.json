@@ -52,7 +52,7 @@
     }
   ],
   "deploy": {
-    "providers": [{"distribution": "pubdeploy", "wheel": "https://github.com/Sustenaut/pubdeploy/releases/download/v0.3.0/pubdeploy-0.3.0-py3-none-any.whl", "sha256": "f569e8cbb50e869b8e856bd15d178ccacf2c62e40b1cf278fde807847706fb07"}, {"distribution": "pubsec", "wheel": "https://github.com/Sustenaut/pubsec/releases/download/v0.1.2/pubsec-0.1.2-py3-none-any.whl", "sha256": "88a68ffd252b49289ae02d0a9f629f3e0f0832c921cb8ee0f1301f958527de17"}],
+    "providers": [{"distribution": "pubdeploy", "wheel": "https://github.com/Sustenaut/pubdeploy/releases/download/v0.5.0/pubdeploy-0.5.0-py3-none-any.whl", "sha256": "320d68e081c674457294e6ed3a6c8ab9e2606ca4a2946c252a34021b62dc70cd"}, {"distribution": "pubsec", "wheel": "https://github.com/Sustenaut/pubsec/releases/download/v0.3.0/pubsec-0.3.0-py3-none-any.whl", "sha256": "a9036c741e29098cdd04baf64c7873e0ff1dd6e7bde12e9671a3940370724e18"}],
     "namespace": "release",
     "host": "release.sustenaut.eu",
     "workflow": "deploy.yml",

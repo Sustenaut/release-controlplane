@@ -1,5 +1,5 @@
 # Test the release control plane. CI runs `make venv` then `make functional`
-# (pubkit.json's ci block).
+# (pubrules.json's ci block).
 
 PYTHON ?= python3
 VENV := .venv
@@ -24,7 +24,7 @@ functional: venv node
 	cd tests && ../$(VENV)/bin/pytest -n auto
 
 lock: venv
-	$(VENV)/bin/pubkit lock
+	$(VENV)/bin/pubrules lock
 
 clean:
 	rm -rf $(VENV) node_modules

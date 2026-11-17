@@ -1,5 +1,5 @@
 # Build and deploy the app (release.sustenaut.eu) once CI passes on a merge to main,
-# or by hand, with pubkit's k8s-deploy.yml (pubkit's README, "Deploying a service to
+# or by hand, with pubrules' k8s-deploy.yml (pubrules' README, "Deploying a service to
 # k3s"). The image goes to GitHub's container registry and holds no secrets. Then the
 # manifests in k8s/, rendered with that image, go to the Sustenaut k3s server
 # (shared-infra's infra/hetzner.tf) over SSH and the tailnet, where the deploy key can
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: Sustenaut/pubdeploy/.github/workflows/k8s-deploy.yml@e9b57bdac253b463d28e6e010594ffa7da32dee5 # v0.3.0
+    uses: Sustenaut/pubdeploy/.github/workflows/k8s-deploy.yml@fc34f05c790732a1ea831d896e557e9f816cba50 # v0.5.0
     with:
       image: ghcr.io/sustenaut/sustenaut-release
       deploys: |

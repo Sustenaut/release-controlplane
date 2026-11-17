@@ -14,21 +14,21 @@ import pytest
 import yaml
 from pytest_bdd import given, parsers, scenarios, then, when
 
-scenarios("pubkit_facts.feature")
+scenarios("pubrules_facts.feature")
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE_GH = f"""#!{sys.executable}
 import json, os, re, sys
 world = json.load(open(os.environ["FAKE_WORLD"]))
 path = sys.argv[-1]
-if path == "repos/Sustenaut/pubkit/releases/latest":
+if path == "repos/Sustenaut/pubrules/releases/latest":
     print(json.dumps({{"tag_name": "v" + world["latest"]}})); sys.exit(0)
-if path.startswith("repos/Sustenaut/pubkit/releases?"):
+if path.startswith("repos/Sustenaut/pubrules/releases?"):
     print(json.dumps([{{"tag_name": "v" + v, "published_at": at}} for v, at in world["released"].items()])); sys.exit(0)
-m = re.match(r"repos/Sustenaut/([^/]+)/contents/tests/requirements-pubkit.txt$", path)
+m = re.match(r"repos/Sustenaut/([^/]+)/contents/tests/requirements-pubrules.txt$", path)
 if m and m.group(1) in world["pins"]:
     v = world["pins"][m.group(1)]
-    print(f"pubkit @ https://github.com/Sustenaut/pubkit/releases/download/v{{v}}/pubkit-{{v}}-py3-none-any.whl"); sys.exit(0)
+    print(f"pubrules @ https://github.com/Sustenaut/pubrules/releases/download/v{{v}}/pubrules-{{v}}-py3-none-any.whl"); sys.exit(0)
 m = re.match(r"repos/Sustenaut/([^/]+)/actions/workflows/main.yml/runs", path)
 if m:
     run = world["runs"].get(m.group(1))
@@ -36,7 +36,7 @@ if m:
 m = re.match(r"repos/Sustenaut/[^/]+/actions/runs/([^/]+)/jobs", path)
 if m:
     run = next(r for r in world["runs"].values() if str(r["id"]) == m.group(1))
-    print(json.dumps({{"jobs": [{{"steps": [{{"name": "Run .venv/bin/pubkit sync --check", "conclusion": run["sync"]}}]}}]}})); sys.exit(0)
+    print(json.dumps({{"jobs": [{{"steps": [{{"name": "Run .venv/bin/pubrules sync --check", "conclusion": run["sync"]}}]}}]}})); sys.exit(0)
 sys.stderr.write("gh: Not Found (HTTP 404)\\\\n"); sys.exit(1)
 """
 
@@ -46,19 +46,19 @@ def world():
     return {"latest": "0", "released": {}, "pins": {}, "runs": {}, "state": {"owner": "Sustenaut", "repos": {}}}
 
 
-@given(parsers.parse('pubkit\'s latest release is "{v}"'))
+@given(parsers.parse('pubrules\' latest release is "{v}"'))
 def latest(world, v):
     world["latest"] = v
 
 
-@given(parsers.parse('pubkit "{v}" was released {days:d} days ago'))
+@given(parsers.parse('pubrules "{v}" was released {days:d} days ago'))
 def released(world, v, days):
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
     world["released"][v] = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @given(parsers.re(r'the state (?P<how>puts|governs|has) "(?P<name>[^"]+)"(?: on the board| off the board)?, '
-                  r'pinning (?:pubkit "(?P<v>[^"]+)"|nothing), '
+                  r'pinning (?:pubrules "(?P<v>[^"]+)"|nothing), '
                   r'(?:whose main (?P<sync>passes|fails) its sync check at "(?P<sha>[^"]+)"|with no main runs)'))
 def listed(world, how, name, v, sync, sha):
     if v:
@@ -137,10 +137,10 @@ def pin_status(result, repo, status):
 
 @when("I read the nightly workflow", target_fixture="job")
 def nightly():
-    return yaml.safe_load((ROOT / ".github/workflows/fleet-nightly.yml").read_text())["jobs"]["pubkit"]
+    return yaml.safe_load((ROOT / ".github/workflows/fleet-nightly.yml").read_text())["jobs"]["pubrules"]
 
 
-@then("its pubkit job writes the facts to storage's pubkit-checks tenant as the job's own token")
+@then("its pubrules job writes the facts to storage's pubkit-checks tenant as the job's own token")
 def to_storage(job):
     assert job["permissions"]["id-token"] == "write"
     run = next(s["run"] for s in job["steps"] if "pubkit-facts" in s.get("run", ""))

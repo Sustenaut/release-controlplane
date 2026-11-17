@@ -88,7 +88,7 @@ function boardRow(row, current) {
   const grades = CATEGORIES.map(([key, label]) => grade(label, row.grades?.[key], key === "security" ? secretFix(row, current) : "")).join("");
   const privately = row.visibility === "private" ? ' <span class="tag">private</span>' : "";
   return `<tr><td class="mono">${escape(row.repo)}${privately} <span class="tag">${escape(row.kind)}</span></td>
-<td>${dot(row.overall)}</td><td class="mono">${escape(row.released)}</td><td class="mono">${escape(row.pubkit)}</td>${grades}</tr>`;
+<td>${dot(row.overall)}</td><td class="mono">${escape(row.released)}</td><td class="mono">${escape(row.pubrules)}</td>${grades}</tr>`;
 }
 
 const worstFirst = (a, b) => LETTERS.indexOf(b.overall) - LETTERS.indexOf(a.overall) || a.repo.localeCompare(b.repo);
@@ -121,7 +121,7 @@ export function boardPage({ owner, result, checked, current }, who) {
     const board = result.value;
     const problems = (board.problems ?? []).map((p) => `<p class="problem">${escape(p)}</p>`).join("");
     const groups = byProject(board.repos ?? []).map(([project, rows]) => `<h3>${escape(project)}</h3><div class="wrap"><table>
-<thead><tr><th>Repository</th><th>Overall</th><th>Released</th><th>pubkit</th><th>Quality</th><th>Security</th><th>Delivery</th></tr></thead>
+<thead><tr><th>Repository</th><th>Overall</th><th>Released</th><th>pubrules</th><th>Quality</th><th>Security</th><th>Delivery</th></tr></thead>
 <tbody>${[...rows].sort(worstFirst).map((row) => boardRow(row, current)).join("")}</tbody></table></div>`).join("");
     body = `<p class="meta">${escape(board.summary)}</p>${problems}${groups}`;
   }

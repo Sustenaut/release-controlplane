@@ -35,9 +35,9 @@ const BOARD = {
   summary: "2 repos: 1 A, 1 D.",
   problems: [],
   repos: [
-    { repo: "example-org/good", kind: "package", released: "v1.0.0", pubkit: "0.23.2", overall: "A", project: "tools", visibility: "public",
+    { repo: "example-org/good", kind: "package", released: "v1.0.0", pubrules: "0.23.2", overall: "A", project: "tools", visibility: "public",
       grades: { quality: { letter: "A", start: { text: "SonarQube Cloud: A" }, steps: [] }, security: { letter: "A" }, delivery: { letter: "A" } } },
-    { repo: "example-org/bad", kind: "service", released: "-", pubkit: "<b>old</b>", overall: "D", project: "tools", visibility: "private",
+    { repo: "example-org/bad", kind: "service", released: "-", pubrules: "<b>old</b>", overall: "D", project: "tools", visibility: "private",
       grades: { quality: { letter: "D", start: { text: "Start" }, steps: [{ text: "3 open <issues>" }] }, security: { letter: "A" }, delivery: { letter: "B" } } },
   ],
 };

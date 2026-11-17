@@ -1,7 +1,7 @@
 # Every night: pubfleet's nightly on what Sustenaut's state.json governs.
 # 02:41 UTC. pubfleet's nightly has no schedule of its own, so this is the only one that runs it.
 # It also reports any GitHub variable that differs from what release-state gives it, and
-# keeps each repository's checks against pubkit as facts for observability.
+# keeps each repository's checks against pubrules as facts for observability.
 name: nightly
 
 on:
@@ -94,14 +94,14 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json; charset=utf-8' \
             --data "$(jq -n --arg c "$USER_ID" --arg t "$text" '{channel: $c, text: $t}')" > /dev/null
 
-  # Each repository on the board against pubkit, every night, as facts: its pin against
-  # pubkit's latest release, and main's sync check, passes as well as failures, one row
+  # Each repository on the board against pubrules, every night, as facts: its pin against
+  # pubrules' latest release, and main's sync check, passes as well as failures, one row
   # each (bin/pubkit-facts). They go to storage's private pubkit-checks buffer, which the
   # integrations ingest loads into BigQuery's platform.pubkit_checks, where observability's
   # pubkit_drift rule opens a signal on a failure and the notifier posts its fix. This
   # repository is public and the state may name private repositories, so the facts go
   # only to the private tenant; the log and the summary give counts.
-  pubkit:
+  pubrules:
     runs-on: ubuntu-latest
     # Each repository's runs are read back until one ran its sync check: minutes, not seconds.
     timeout-minutes: 30

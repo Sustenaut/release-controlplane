@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Checks that the nightly's pubkit facts can flow (README, fleet-nightly.yml's pubkit job),
+# Checks that the nightly's pubrules facts can flow (README, fleet-nightly.yml's pubrules job),
 # and says what is still missing. Run it from this repository's root on main (git latest),
 # with its .env for ./with-secrets and the shared-infra checkout beside it:
 #
 #   scripts/go-live-pubkit-facts.sh
 #
-# The facts need two things this repository does not make itself, which pubkit.json's
+# The facts need two things this repository does not make itself, which pubrules.json's
 # deploy block declares:
 #   - the private storage tenant pubkit-checks, which a pull request to Sustenaut/storage
 #     adds to its tenants.json (its deploy publishes it);
@@ -17,10 +17,10 @@ cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
 git fetch -q origin main
 [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || { echo "check out main first (git latest)" >&2; exit 1; }
-grep -q '"pubkit-checks"' pubkit.json || { echo "main has no pubkit-checks tenant yet: merge the pull request first" >&2; exit 1; }
-[[ -f ../shared-infra/pubkit.json ]] || { echo "no ../shared-infra checkout beside this one, for the zones" >&2; exit 1; }
+grep -q '"pubkit-checks"' pubrules.json || { echo "main has no pubkit-checks tenant yet: merge the pull request first" >&2; exit 1; }
+[[ -f ../shared-infra/pubrules.json ]] || { echo "no ../shared-infra checkout beside this one, for the zones" >&2; exit 1; }
 
-walk=$(./with-secrets ./pubdeploy walk --unit release --server sustenaut --zones ../shared-infra/pubkit.json 2>&1 || true)
+walk=$(./with-secrets ./pubdeploy walk --unit release --server sustenaut --zones ../shared-infra/pubrules.json 2>&1 || true)
 missing=$(grep -E '^(missing|drift|blocked) +(storage\.tenant:pubkit-checks|github\.variable-entry:Sustenaut/integrations/INGEST_PUBKIT_CHECKS)' <<<"$walk" || true)
 if [[ -n $missing ]]; then
   echo "Not ready yet:"

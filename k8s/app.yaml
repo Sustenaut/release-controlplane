@@ -28,7 +28,7 @@ spec:
         app: release
     spec:
       serviceAccountName: app
-      # Its hardening and probes come from pubkit's app component (kustomization.yaml).
+      # Its hardening and probes come from pubrules' app component (kustomization.yaml).
       securityContext:
         fsGroup: 1000
       containers:

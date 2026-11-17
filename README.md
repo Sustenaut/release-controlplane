@@ -61,9 +61,9 @@ tenant, so neither can see the other.
   `state.json`, as the reader app, and sends the operator a direct message saying what
   differs when a repository's GitHub variables aren't what the state gives them, as after
   a change by hand. It puts nothing back, and its log says only whether they differ.
-  Its `pubkit` job runs `bin/pubkit-facts` on `state.json`, as the reader app: for each
-  repository on the board, two facts every night, passes as well as failures, its pubkit
-  pin against pubkit's latest release and main's `pubkit sync --check`, with the pinned and
+  Its `pubrules` job runs `bin/pubkit-facts` on `state.json`, as the reader app: for each
+  repository on the board, two facts every night, passes as well as failures, its pubrules
+  pin against pubrules' latest release and main's `pubrules sync --check`, with the pinned and
   latest versions, main's commit and run, and what to run to fix it. They go to storage's
   private `pubkit-checks` buffer, as the job's OpenID Connect token; the integrations ingest
   loads them into BigQuery's `platform.pubkit_checks`, observability's `pubkit_drift` rule
@@ -85,7 +85,7 @@ pubpr makes its own calls to GitHub.
 
 ## The reader app's values
 
-This repository's `pubkit.json` names the reader app's three values in Bitwarden
+This repository's `pubrules.json` names the reader app's three values in Bitwarden
 and on GitHub, in its `github_app` block. `pubsec app-secrets` sends them here:
 
 ```sh
@@ -100,26 +100,26 @@ checkout's gitignored `.env`.
 ## Deploying
 
 `.github/workflows/deploy.yml` builds the image on each merge to main, once CI has
-passed, and applies `k8s/` to namespace `release` with pubkit's `k8s-deploy.yml`, once
+passed, and applies `k8s/` to namespace `release` with pubrules' `k8s-deploy.yml`, once
 `DEPLOY_RELEASE` is `on`, and `k8s-schryer/` to `release-schryer`, once `DEPLOY_SCHRYER`
 is `on`.
 
-pubkit.json's `deploy` block lists everything else the two deployments need: its top
+pubrules.json's `deploy` block lists everything else the two deployments need: its top
 level is the unit `release` (release.sustenaut.eu), and `units` adds `release-schryer`
-(release.schryer.eu). pubkit's deploy walk checks each need and makes what it can. To
+(release.schryer.eu). pubrules' deploy walk checks each need and makes what it can. To
 take Sustenaut's deployment live, or bring it back in step, from a checkout of this
 repository with Sustenaut/shared-infra and Sustenaut/auth checked out beside it, on a
 machine on the admin tailnet, signed in to `gh`:
 
 ```sh
-./with-secrets ./pubdeploy walk --fulfil --unit release --server sustenaut --zones ../shared-infra/pubkit.json
+./with-secrets ./pubdeploy walk --fulfil --unit release --server sustenaut --zones ../shared-infra/pubrules.json
 ```
 
 schryer.eu's zone is kept in schryer/schryer-eu-infra, so schryer's unit is walked with
 that checkout beside this one:
 
 ```sh
-./with-secrets ./pubdeploy walk --unit release-schryer --server sustenaut --zones ../schryer-eu-infra/pubkit.json
+./with-secrets ./pubdeploy walk --unit release-schryer --server sustenaut --zones ../schryer-eu-infra/pubrules.json
 ```
 
 It checks every need, prints the plan, and waits for a typed `yes`; then it makes each

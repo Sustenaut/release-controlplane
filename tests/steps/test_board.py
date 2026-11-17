@@ -1,4 +1,4 @@
-"""Steps for how this repository's public workflow calls pubkit."""
+"""Steps for how this repository's public workflow calls pubrules."""
 
 from __future__ import annotations
 

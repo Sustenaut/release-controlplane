@@ -1,4 +1,4 @@
-Feature: The hourly board stays quiet, and keeps its board with pubkit
+Feature: The hourly board stays quiet, and keeps its board with pubrules
   pubfleet's own tests cover `pubfleet state --repos-for` and `pubfleet board-publish`. These check
   how this repository's public workflow calls them.
 

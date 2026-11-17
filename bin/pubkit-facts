@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The platform's nightly checks of each repository against pubkit, as facts:
+"""The platform's nightly checks of each repository against pubrules, as facts:
 
     bin/pubkit-facts state.json --url https://storage.sustenaut.eu --tenant pubkit-checks
     bin/pubkit-facts state.json --out checks.avro          # the file alone, sent nowhere
@@ -7,11 +7,11 @@
 For each repository state.json puts on the board it reads, as the token in GH_TOKEN
 allows, two things, and records both whatever they show, passes as well as failures:
 
-- pin: the pubkit its tests/requirements-pubkit.txt pins, against pubkit's releases. It
+- pin: the pubrules its tests/requirements-pubrules.txt pins, against pubrules' releases. It
   passes on the latest, is "behind" while the first release after its pin is under
   GRACE_DAYS old (the nightly and the bump round have not had their turn yet), and
   fails once that release is older: a repository left behind, not a release day;
-- sync: the newest of main's commits whose `pubkit sync --check` step ran, in main.yml or
+- sync: the newest of main's commits whose `pubrules sync --check` step ran, in main.yml or
   in the merge queue's run of that very commit (main skips the tests the queue passed):
   pass or fail, with that run.
 
@@ -19,7 +19,7 @@ Each is one row (observed_at, repository, check, status pass|behind|fail|unknown
 main_commit, run_url, fix, run_started_at), all of them one Avro file in the tenant's
 buffer (inbox/pubkit-checks/), which the integrations ingest pod loads into BigQuery's
 platform.pubkit_checks, where observability's pubkit_drift rule reads them. The schema is
-integrations' PUBKIT_CHECK_SCHEMA. It writes as the GitHub Actions job's OpenID Connect
+integrations' PUBRULES_CHECK_SCHEMA. It writes as the GitHub Actions job's OpenID Connect
 token, for the audience that is the URL's host name.
 
 It prints only how many rows it wrote and how many failed: the state names private
@@ -45,25 +45,25 @@ from pathlib import Path
 
 import fastavro
 
-PIN = re.compile(r"/pubkit-(\d+\.\d+\.\d+)-py3-none-any\.whl")
-# The names pubkit's generated CI gives the step that runs `pubkit sync --check`: the
+PIN = re.compile(r"/pubrules-(\d+\.\d+\.\d+)-py3-none-any\.whl")
+# The names pubrules' generated CI gives the step that runs `pubrules sync --check`: the
 # Python and Rust jobs' run lines, the service checks job's name, and the Node test
 # job's first line.
-SYNC_STEPS = ("pubkit sync --check", "make sync-check", "managed files are in step",
+SYNC_STEPS = ("pubrules sync --check", "make sync-check", "managed files are in step",
               "Run python -m venv .venv")
 FOLDER = "inbox/pubkit-checks/"
 # Named, as pubfleet board-publish is: Cloudflare, in front of storage, turns away
 # Python's default User-Agent (error code 1010) before storage sees the request.
 AGENT = "release-controlplane-pubkit-facts"
-BUMP = "`git latest && ./pubkit bump`, then open its PR"
+BUMP = "`git latest && ./pubrules bump`, then open its PR"
 GOVERNED = "its nightly update PR moves it"
-SYNC = "`git latest && ./pubkit sync`, then open its PR"
-# How long a repository may stay behind a pubkit release before its pin fails.
+SYNC = "`git latest && ./pubrules sync`, then open its PR"
+# How long a repository may stay behind a pubrules release before its pin fails.
 GRACE_DAYS = 7
 # How far back main's commits are read for a run whose sync check ran.
 SYNC_RUNS = 10
 _TIME = {"type": "long", "logicalType": "timestamp-micros"}
-# integrations' PUBKIT_CHECK_SCHEMA, the columns of platform.pubkit_checks.
+# integrations' PUBRULES_CHECK_SCHEMA, the columns of platform.pubkit_checks.
 SCHEMA = fastavro.parse_schema({
     "type": "record", "name": "pubkit_check", "fields": [
         {"name": "observed_at", "type": _TIME},
@@ -95,16 +95,16 @@ def version(text: str) -> tuple[int, ...]:
 
 
 def releases() -> dict[str, datetime]:
-    """When each pubkit release was published, by version."""
-    found = gh("repos/Sustenaut/pubkit/releases?per_page=100") or []
+    """When each pubrules release was published, by version."""
+    found = gh("repos/Sustenaut/pubrules/releases?per_page=100") or []
     return {r["tag_name"].removeprefix("v"): datetime.fromisoformat(r["published_at"].replace("Z", "+00:00"))
             for r in found if r.get("published_at") and not r.get("draft")}
 
 
 def pin_row(repo: str, roles: dict, latest: str, published: dict[str, datetime], now: datetime) -> dict:
-    """The pubkit the repository pins, against pubkit's releases: behind for GRACE_DAYS
+    """The pubrules the repository pins, against pubrules' releases: behind for GRACE_DAYS
     after the first release past its pin, failing after that."""
-    text = gh(f"repos/{repo}/contents/tests/requirements-pubkit.txt", raw=True)
+    text = gh(f"repos/{repo}/contents/tests/requirements-pubrules.txt", raw=True)
     m = PIN.search(text or "")
     if not m:
         return {"check": "pin", "status": "unknown", "pinned": "", "fix": ""}
@@ -210,9 +210,9 @@ def main(argv: list[str]) -> int:
     if not args.out and not (args.url and args.tenant):
         p.error("give --url and --tenant, or --out")
     state = json.loads(args.state.read_text(encoding="utf-8"))
-    release = gh("repos/Sustenaut/pubkit/releases/latest")
+    release = gh("repos/Sustenaut/pubrules/releases/latest")
     if not release:
-        print("pubkit-facts: pubkit's latest release can't be read", file=sys.stderr)
+        print("pubkit-facts: pubrules' latest release can't be read", file=sys.stderr)
         return 2
     now = datetime.now(timezone.utc)
     started = now.replace(microsecond=0)

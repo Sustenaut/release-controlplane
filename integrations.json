@@ -24,7 +24,7 @@
         "app/config.js",
         "app/test/**",
         "k8s/app.yaml",
-        "pubkit.json"
+        "pubrules.json"
       ],
       "mode": "required"
     },
@@ -65,7 +65,7 @@
       "plugin": "slack.post",
       "paths": [
         ".github/workflows/fleet-nightly.yml",
-        "pubkit.json"
+        "pubrules.json"
       ],
       "mode": "required"
     },

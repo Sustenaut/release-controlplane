@@ -1,30 +1,19 @@
-// The pages, with GitHub and storage answered here.
-import { After, Then } from "@cucumber/cucumber";
-import { mock as nodeMock } from "node:test";
+// The pages, with GitHub and storage answered here: by stand-ins for the app's readers,
+// or by pubtest's fake services where the code under test makes the calls itself.
+import { Given, Then, When } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
-import { generateKeyPairSync, createPublicKey, createVerify } from "node:crypto";
-import { createServer } from "node:http";
-import { cached, handler, readiness, stateHistory } from "../server.js";
+import { createPublicKey, createVerify, generateKeyPairSync } from "node:crypto";
+import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
+import { cached, readiness, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
 import { lastRun } from "../runs.js";
-import { DATASET, REPO, callLog, caller as defaultCaller } from "../calls.js";
-import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
+import { REPO, callLog, caller as defaultCaller } from "../calls.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
-import { escape } from "../render.js";
 import { accessCheck } from "../access.js";
 import { fakeAccess } from "./fake-access.js";
-
-// What node:test gave each test as `t`: its mocks, restored when the
-// scenario ends, and the cleanups it registers with t.after().
-const cleanups = [];
-const scenarioContext = { mock: nodeMock, after: (fn) => cleanups.push(fn) };
-After("@app", async function () {
-  while (cleanups.length) await cleanups.pop()();
-  nodeMock.restoreAll();
-});
-
+import { count, routed } from "./features/support.js";
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -44,11 +33,13 @@ const BOARD = {
 const STATE = { owner: "example-org", repos: { good: roles({ project: "tools", govern: true }), bad: roles({ protect: false }) } };
 const SHA = "a".repeat(40);
 
-function fakes(overrides = {}) {
-  return {
+// The site's readers, as the app's handler takes them.
+Given("the site of {string}, whose board shows a good and a bad repository", function (owner) {
+  assert.equal(owner, OWNER.name);
+  this.site = {
     owner: OWNER,
-    access: overrides.access ?? fakeAccess(),
-    storage: { latest: async () => BOARD, log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }], ...overrides.storage },
+    access: fakeAccess(),
+    storage: { latest: async () => BOARD, log: async () => [{ hash: "a".repeat(64), time: "2026-10-30T10:00:00Z", principal: "github:x/y" }] },
     github: {
       state: async () => STATE,
       stateFile: async () => ({ state: STATE, sha: SHA }),
@@ -57,457 +48,282 @@ function fakes(overrides = {}) {
         { sha: "new", message: "Govern good", author: "David", time: "2026-10-30T11:00:00Z" },
         { sha: "old", message: "Seed", author: "David", time: "2026-10-30T09:00:00Z" },
       ],
-      ...overrides.github,
     },
   };
-}
-
-async function get(handle, path, email = "me@example.org", method = "GET", roles = "release") {
-  const server = createServer((req, res) => handle(req, res)).listen(0);
-  await new Promise((resolve) => server.once("listening", resolve));
-  try {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-      method, headers: email ? { "X-Forwarded-Email": email, "X-Forwarded-Access-Token": roles } : {},
-    });
-    return { status: response.status, text: await response.text(), headers: response.headers };
-  } finally {
-    server.close();
-  }
-}
-
-Then("the board groups by project, worst first, and says when there is none", function () {
-  return (async () => {
-  const { status, text } = await get(handler(fakes()), "/");
-  assert.equal(status, 200);
-  assert.ok(text.indexOf("example-org/bad") < text.indexOf("example-org/good"), "worst first");
-  assert.match(text, /<h3>tools<\/h3>/);
-  assert.match(text, /private/);
-  assert.match(text, /aria-current="page">Board/);
-  assert.match((await get(handler(fakes({ storage: { latest: async () => null } })), "/")).text, /No board yet/);
-})();
 });
 
-Then("what a repository says is escaped, everywhere", function () {
-  return (async () => {
-  const { text } = await get(handler(fakes()), "/");
-  assert.ok(!text.includes("<b>old</b>") && !text.includes("<issues>"));
-  assert.ok(text.includes(escape("3 open <issues>")));
-})();
+Given("the board isn't there yet", function () {
+  this.site.storage.latest = async () => null;
 });
 
-Then("the state shows each repository's roles", function () {
-  return (async () => {
-  const { text } = await get(handler(fakes()), "/state");
-  assert.match(text, /bad<\/td><td>·<\/td><td class="on">on<\/td><td class="off">off<\/td><td class="off">off/);
-  assert.match(text, /good<\/td><td>tools<\/td><td class="on">on<\/td><td class="on">on<\/td><td class="on">on/);
-})();
+Given("storage fails, saying {string}", function (said) {
+  this.site.storage.latest = async () => { throw new Error(said); };
 });
 
-Then("the history shows state changes in words, and the board's snapshots", function () {
-  return (async () => {
+Given("the state's history has a commit governing good, after one adding it", function () {
   const states = { new: { owner: "o", repos: { good: roles({ govern: true }) } }, old: { owner: "o", repos: { good: roles() } } };
-  const { text } = await get(handler(fakes({ github: { state: async (_, ref) => states[ref] ?? STATE } })), "/history");
-  assert.match(text, /good: govern on/);
-  assert.match(text, /good added/);
-  assert.match(text, /Govern good/);
-  assert.match(text, /aaaaaaaaaaaa/);
-  assert.ok(!text.includes("a".repeat(13)), "a snapshot's hash is shortened");
-})();
+  this.site.github.state = async (_, ref) => states[ref] ?? STATE;
 });
 
-Then("someone without the role gets in nowhere", function () {
-  return (async () => {
-  const handle = handler(fakes());
-  for (const [email, roles] of [["stranger@example.org", "opportunity"], ["", "release"]]) {
-    const { status, text } = await get(handle, "/state", email, "GET", roles);
-    assert.equal(status, 403);
-    assert.ok(!text.includes("good"));
+Given("the app isn't ready, saying {string}", function (problem) {
+  this.site.ready = async () => problem;
+});
+
+Given("every read is recorded", function () {
+  this.asked = [];
+  for (const reads of [this.site.storage, this.site.github]) {
+    for (const [name, read] of Object.entries(reads)) reads[name] = async (owner, ...rest) => (this.asked.push(owner), read(owner, ...rest));
   }
-})();
 });
 
-Then("the health checks need no sign-in, and tell nothing", function () {
-  return (async () => {
-  for (const path of ["/healthz", "/livez"]) {
-    const { status, text } = await get(handler(fakes()), path, "");
-    assert.equal(status, 200);
-    assert.equal(text, "ok\n");
-  }
-})();
+Then("every read asked for this deployment's owner", function () {
+  assert.ok(this.asked.length >= 1, "nothing was read");
+  assert.ok(this.asked.every((o) => o === OWNER), `a read asked for ${JSON.stringify(this.asked)}`);
 });
 
-Then("without what it needs the app is not ready, but still alive", function () {
-  return (async () => {
-  const handle = handler({ ...fakes(), ready: async () => "no token" });
-  const ready = await get(handle, "/healthz", "");
-  assert.equal(ready.status, 503);
-  assert.equal(ready.text, "not ready\n");
-  assert.equal((await get(handle, "/livez", "")).status, 200);
-})();
+Given("the board's workflow last ran at {string}, ending in {string}, its page {string}", function (time, conclusion, url) {
+  this.site.boardRun = async () => ({ time, conclusion, url });
 });
 
-Then("readiness is checked at most every 30 seconds, a failure too", function () {
-  return (async () => {
-  let clock = 0;
-  let calls = 0;
-  let failing = true;
-  const ready = readiness(async () => {
-    calls += 1;
-    if (failing) throw new Error("no token");
-  }, () => clock);
-  assert.equal(await ready(), "no token");
-  failing = false;
-  clock = 29_999;
-  assert.equal(await ready(), "no token");
-  assert.equal(calls, 1);
-  clock = 30_000;
-  assert.equal(await ready(), null);
-  assert.equal(calls, 2);
-})();
+Given("the board's workflow can't be read, GitHub saying {string}", function (said) {
+  this.site.boardRun = async () => { throw new Error(said); };
 });
 
-Then("only GET and POST are taken, and an unknown page is not found", function () {
-  return (async () => {
-  assert.equal((await get(handler(fakes()), "/", "me@example.org", "PUT")).status, 405);
-  assert.equal((await get(handler(fakes()), "/", "me@example.org", "POST")).status, 404);
-  assert.equal((await get(handler(fakes()), "/example-org")).status, 404);
-  assert.equal((await get(handler(fakes()), "/nope")).status, 404);
-})();
+Given("the owner has a writer", function () {
+  this.site.owner = { ...OWNER, writerInstallation: "3" };
+  this.site.save = { save: async () => { throw new Error("no save"); } };
 });
 
-Then("pages allow no scripts and are not stored", function () {
-  return (async () => {
-  const { headers } = await get(handler(fakes()), "/");
-  assert.match(headers.get("content-security-policy"), /default-src 'none'/);
-  assert.equal(headers.get("cache-control"), "no-store");
-})();
-});
-
-Then("what can't be read is said on the page", function () {
-  return (async () => {
-  const failing = { latest: async () => { throw new Error("storage said 500"); } };
-  const { status, text } = await get(handler(fakes({ storage: failing })), "/");
-  assert.equal(status, 200);
-  assert.match(text, /storage said 500/);
-})();
-});
-
-Then("the page names only this deployment's owner, and reads only its tenant and repository", function () {
-  return (async () => {
-  const asked = [];
-  const handle = handler(fakes({
-    storage: { latest: async (o) => (asked.push(o), BOARD), log: async (o) => (asked.push(o), []) },
-    github: { stateFile: async (o) => (asked.push(o), { state: STATE, sha: "s" }), state: async (o) => (asked.push(o), STATE), commits: async (o) => (asked.push(o), []) },
-  }));
-  for (const path of ["/", "/state", "/history"]) assert.equal((await get(handle, path)).status, 200);
-  assert.ok(asked.length >= 3);
-  assert.ok(asked.every((o) => o === OWNER));
-})();
-});
-
-Then("a read is kept for a minute, and a failure isn't kept", function () {
-  return (async () => {
-  let reads = 0;
-  let time = 0;
-  let fail = true;
-  const read = cached(async () => { reads++; if (fail) throw new Error("no"); return reads; }, () => time);
-  await assert.rejects(read("a"));
-  fail = false;
-  assert.equal(await read("a"), 2);
-  assert.equal(await read("a"), 2);
-  time = 60_000;
-  assert.equal(await read("a"), 3);
-})();
-});
-
-Then("a commit's state file is read once, and a failed read is tried again", function () {
-  return (async () => {
-  let reads = 0;
-  let fail = true;
-  const github = {
-    commits: async () => [{ sha: "c1", message: "m", author: "a", time: "t" }],
-    state: async () => { reads++; if (fail) throw new Error("no"); return STATE; },
-  };
-  const history = stateHistory(github);
-  await assert.rejects(history(OWNER));
-  fail = false;
-  await history(OWNER);
-  await history(OWNER);
-  assert.equal(reads, 2);
-})();
-});
-
-Then("changes says what moved, added and went", function () {
-  return (() => {
-  const before = { repos: { a: roles(), b: roles(), c: roles({ project: "x" }) } };
-  const after = { repos: { a: roles({ board: false }), c: roles({ project: "y" }), d: roles() } };
-  assert.deepEqual(changes(before, after), ["a: board off", "b removed", "c: project y", "d added"]);
-  assert.deepEqual(changes(after, after), []);
-  assert.deepEqual(changes({ repos: { a: roles({ project: "x" }) } }, { repos: { a: roles() } }), ["a: project none"]);
-})();
-});
-
-Then("the app's token is a signed JWT GitHub can check", function () {
-  return (() => {
-  const jwt = appJwt("123", privateKey, 1_000_000);
-  const [head, body, signature] = jwt.split(".");
-  const claims = JSON.parse(Buffer.from(body, "base64url"));
-  assert.equal(claims.iss, "123");
-  assert.ok(claims.iat < 1000 && claims.exp - claims.iat <= 600);
-  assert.ok(createVerify("RSA-SHA256").update(`${head}.${body}`).verify(createPublicKey(privateKey), signature, "base64url"));
-})();
-});
-
-Then("the reader reads as each owner's installation, Contents read only, and keeps its token", function () {
-  return (async () => {
-  const calls = [];
-  let time = Date.parse("2026-10-30T10:00:00Z");
-  const fetch = async (url, init) => {
-    calls.push({ url, init });
-    if (url.includes("/access_tokens")) {
-      return Response.json({ token: `token-${url.match(/installations\/(\d+)/)[1]}`, expires_at: new Date(time + 3_600_000).toISOString() });
-    }
-    if (url.includes("/commits?")) {
-      return Response.json([{ sha: "s", commit: { message: "Title\n\nbody", author: { name: "David", date: "d" } } }]);
-    }
-    return new Response(JSON.stringify(STATE));
-  };
-  const github = reader({ appId: "1", appKey: privateKey }, { fetch, now: () => time });
-  assert.deepEqual(await github.state(OWNER), STATE);
-  await github.state(OWNER);
-  assert.equal(calls.filter((c) => c.url.includes("access_tokens")).length, 1, "the token is kept");
-  const made = calls.find((c) => c.url.includes("access_tokens"));
-  assert.match(made.url, /installations\/11\/access_tokens/);
-  assert.deepEqual(JSON.parse(made.init.body), { permissions: { contents: "read" } });
-  assert.match(calls.at(-1).url, /repos\/example-org\/release-state\/contents\/state\.json\?ref=main/);
-  assert.equal(calls.at(-1).init.headers.Authorization, "Bearer token-11");
-
-  assert.deepEqual(await github.commits(OWNER), [{ sha: "s", message: "Title", author: "David", time: "d" }]);
-  time += 3_600_000;
-  await github.state(OWNER);
-  assert.equal(calls.filter((c) => c.url.includes("installations/11")).length, 2, "a token near its end is replaced");
-})();
-});
-
-// The app's Caller, on a stand-in for fetch, with its records kept and no waits.
-function calling(fetch) {
-  const sink = new MemorySink();
-  const naps = [];
-  return { sink, naps, caller: new Caller(REPO, "web", { fetch, sink, sleep: async (s) => naps.push(s), random: () => 1 }) };
-}
-
-Then("storage reads the token afresh, names itself, and a missing head is no board", function () {
-  return (async () => {
-  const seen = [];
-  let token = "first";
-  const fetch = async (url, init) => {
-    seen.push({ url, init });
-    if (url.includes("release-none")) return Response.json({ error: "not found" }, { status: 404 });
-    return url.endsWith("/log") ? Response.json({ name: "board", log: [{ hash: "h" }] }) : Response.json(BOARD);
-  };
-  const { caller, sink } = calling(fetch);
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => `${token}\n` });
-  assert.deepEqual(await store.latest({ tenant: "release-x" }), BOARD);
-  token = "second";
-  assert.deepEqual(await store.log({ tenant: "release-x" }), [{ hash: "h" }]);
-  assert.equal(seen[0].url, "https://s/release-x/head/board");
-  assert.equal(seen[0].init.headers.Authorization, "Bearer first");
-  assert.equal(seen[1].init.headers.Authorization, "Bearer second");
-  assert.equal(seen[0].init.headers["User-Agent"], "sustenaut-release-controlplane");
-  assert.equal(await store.latest({ tenant: "release-none" }), null);
-  assert.deepEqual(await store.log({ tenant: "release-none" }), []);
-  // Each read is a record of storage.api's read, the app's own.
-  assert.deepEqual(sink.records.map((r) => [r.repo, r.plugin, r.operation, r.status]), [
-    [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 200], [REPO, "storage.api", "read", 404], [REPO, "storage.api", "read", 404]]);
-})();
-});
-
-Then("storage refusing is an error that says why, not an empty board", function () {
-  return (async () => {
-  const { caller } = calling(async () => Response.json({ error: "k8s:x may not read here" }, { status: 403 }));
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
-  await assert.rejects(store.latest({ tenant: "x" }), /storage said 403: k8s:x may not read here/);
-})();
-});
-
-Then("storage that doesn't answer is an error that says so, and a person isn't kept waiting on retries", function () {
-  return (async () => {
-  const seen = [];
-  const { caller } = calling(async (url, init) => {
-    seen.push(init.signal);
-    throw new DOMException("The operation timed out.", "TimeoutError");
-  });
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller, readFile: async () => "t" });
-  await assert.rejects(store.latest({ tenant: "x" }), /storage didn't answer: no answer: timed out after 10 s/);
-  assert.equal(seen.length, 1, "a read a person waits on is tried once");
-  assert.ok(seen[0] instanceof AbortSignal);
-  const failing = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: calling(async () => Response.json({ error: "down" }, { status: 503 })).caller, readFile: async () => "t" });
-  await assert.rejects(failing.latest({ tenant: "x" }), /storage said 503: down/);
-})();
-});
-
-Then("the records go to the call log's buffer as the pod, with its storage token", function () {
-  return (async () => {
-  const sent = [];
-  const fetch = async (url, init) => (sent.push({ url, init }), Response.json({ name: "x", size: 1 }));
-  const sink = callLog({ storageUrl: "https://s", storageTokenFile: "/token" }, {
-    sender: "app-7", start: false, fetch, readFile: async (path) => `token from ${path}\n`,
-  });
-  const { caller } = calling(async () => Response.json(BOARD));
-  const store = boards({ storageUrl: "https://s", storageTokenFile: "f" }, { caller: defaultCaller({ fetch: caller.fetch, sink }), readFile: async () => "t" });
-  await store.latest({ tenant: "release-x" });
-  await sink.flush();
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].url, /^https:\/\/s\/calls-release-controlplane\/inbox\/calls\/\d{4}-\d{2}-\d{2}\/\d{6}-app-7-[0-9a-f]{16}\.avro$/);
-  assert.equal(sent[0].init.method, "PUT");
-  assert.equal(sent[0].init.headers.Authorization, "Bearer token from /token");
-  assert.deepEqual(sink.datasets, { [REPO]: DATASET });
-  assert.equal(sink.flushOnWrite, false, "a page never waits on the call log");
-  const quiet = defaultCaller();
-  assert.deepEqual([quiet.repo, quiet.app], [REPO, "web"]);
-})();
-});
-
-Then("the config is for one owner, and needs everything", function () {
-  return (() => {
-  const env = { RELEASE_OWNER: "A-org", RELEASE_READER_APP_INSTALLATION_ID: "1", OIDC_CLIENT_ID: "c", OIDC_CLIENT_SECRET: "s", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
-  const config = configFrom(env);
-  assert.deepEqual(config.owner, { name: "A-org", installation: "1", writerInstallation: undefined, tenant: "release-a-org" });
-  assert.equal(config.storageUrl, "https://storage.sustenaut.eu");
-  assert.equal(config.port, 8080);
-  for (const name of Object.keys(env)) {
-    assert.throws(() => configFrom({ ...env, [name]: "" }), new RegExp(`${name} is not set`));
-  }
-  assert.throws(() => configFrom({ ...env, RELEASE_READER_APP_INSTALLATION_ID: "x" }), /must be a number/);
-})();
-});
-
-Then("the board says when it was last checked, apart from when it last changed", function () {
-  return (async () => {
-  const boardRun = async () => ({ time: "2026-10-31T09:13:00Z", conclusion: "success", url: "https://github.com/x/runs/1" });
-  const { text } = await get(handler({ ...fakes(), boardRun }), "/");
-  assert.match(text, /Last checked <a href="https:\/\/github.com\/x\/runs\/1">2026-10-31T09:13:00Z<\/a>\./);
-  assert.match(text, /2 repos: 1 A, 1 D/);
-  assert.ok(!text.includes("It ended"));
-})();
-});
-
-Then("a run that didn't pass says so", function () {
-  return (async () => {
-  const boardRun = async () => ({ time: "t", conclusion: "failure", url: "https://u" });
-  assert.match((await get(handler({ ...fakes(), boardRun }), "/")).text, /It ended: failure/);
-})();
-});
-
-Then("with no workflow, or GitHub not answering, the board still shows, without that line", function () {
-  return (async () => {
-  assert.ok(!(await get(handler(fakes()), "/")).text.includes("Last checked"));
-  const failing = await get(handler({ ...fakes(), boardRun: async () => { throw new Error("GitHub said 403"); } }), "/");
-  assert.equal(failing.status, 200);
-  assert.ok(!failing.text.includes("Last checked"));
-  assert.match(failing.text, /example-org\/good/);
-})();
-});
-
-Then("the last run comes from the workflow named, with no token, as github.board-read", function () {
-  return (async () => {
-  const seen = [];
-  const { caller, sink } = calling(async (url, init) => {
-    seen.push({ url, init });
-    return Response.json({ workflow_runs: [{ updated_at: "t", conclusion: "success", html_url: "https://u" }] });
-  });
-  assert.deepEqual(await lastRun("o/r/board.yml", { caller })(), { time: "t", conclusion: "success", url: "https://u" });
-  assert.equal(seen[0].url, "https://api.github.com/repos/o/r/actions/workflows/board.yml/runs?status=completed&per_page=1");
-  assert.equal(seen[0].init.headers.Authorization, undefined);
-  assert.ok(seen[0].init.signal instanceof AbortSignal);
-  assert.deepEqual([sink.records[0].plugin, sink.records[0].operation], ["github.board-read", "read"]);
-  assert.equal(await lastRun("o/r/b.yml", calling(async () => Response.json({ workflow_runs: [] })))(), null);
-  await assert.rejects(lastRun("o/r/b.yml", calling(async () => new Response("", { status: 403 })))(), /GitHub said 403/);
-})();
-});
-
-Then("GitHub failing or not answering for the last run is an error that says so, after its retries", function () {
-  return (async () => {
-  const failing = calling(async () => new Response("", { status: 502 }));
-  await assert.rejects(lastRun("o/r/b.yml", failing)(), /GitHub said 502/);
-  assert.deepEqual(failing.naps, [1, 2], "a board read is scheduled work: three tries");
-  await assert.rejects(lastRun("o/r/b.yml", calling(async () => { throw new TypeError("fetch failed"); }))(), /GitHub didn't answer: no answer: fetch failed/);
-  await assert.rejects(lastRun("o/r/b.yml", { caller: { call: async () => { throw new RangeError("not registered"); } } })(), RangeError);
-})();
-});
-
-Then("reading takes the release role, by its exact name", function () {
-  return (async () => {
-  const seen = async (roles, email = "me@example.org") => (await get(handler(fakes()), "/", email, "GET", roles)).status;
-  assert.equal(await seen("release"), 200);
-  assert.equal(await seen("opportunity,release"), 200);
-  assert.equal(await seen("opportunity"), 403);
-  assert.equal(await seen("controller"), 403);
-  assert.equal(await seen("role:release"), 403);
-  assert.equal(await seen("released"), 403);
-})();
-});
-
-function keycloakAnswers(answers, now = Date.now) {
+// Keycloak answered here: the hash, and userinfo as given; a token is only a token.
+function keycloakAnswers(world, answers) {
   return accessCheck({
-    realmUrl: "https://auth.test/r", clientId: "c", clientSecret: "s", role: "release", now,
+    realmUrl: "https://auth.test/r", clientId: "c", clientSecret: "s", role: "release", now: () => world.time,
     request: async (url) => {
-      const { status, body } = answers(url);
+      const { status, body } = world.keycloakDown ? { status: 0 } : answers(url);
       if (status === 0) throw new Error("connection refused");
       return { status, ok: status === 200, json: async () => body };
     },
   });
 }
 
-Then("the page's answer to a sign-in that has ended: a read goes to sign in, a change is refused", function () {
-  return (async () => {
-  const access = keycloakAnswers((url) => (url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 401, body: {} }));
-  const handle = handler(fakes({ access }));
-  const server = createServer((req, res) => handle(req, res)).listen(0);
-  await new Promise((resolve) => server.once("listening", resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const headers = { "X-Forwarded-Email": "me@example.org", "X-Forwarded-Access-Token": "t" };
-  try {
-    const read = await fetch(`${base}/state`, { headers, redirect: "manual" });
-    assert.equal(read.status, 302);
-    assert.equal(read.headers.get("location"), "/oauth2/start?rd=%2Fstate");
-    const change = await fetch(`${base}/state`, { method: "POST", headers, redirect: "manual" });
-    assert.equal(change.status, 403);
-    assert.match(await change.text(), /nothing was saved/);
-  } finally {
-    server.close();
-  }
-})();
+Given("Keycloak says my sign-in has ended", function () {
+  this.site.access = keycloakAnswers(this, (url) => (url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 401, body: {} }));
 });
 
-Then("with Keycloak down someone vouched for reads, without a form; anyone else gets a 503", function () {
-  return (async () => {
-  let down = false;
-  let time = 0;
-  const access = keycloakAnswers((url) => {
-    if (down) return { status: 0 };
-    return url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 200, body: { access: ["release", "controller"] } };
-  }, () => time);
-  const handle = handler({ ...fakes({ access }), save: { save: async () => { throw new Error("no save"); } } });
-  const owner = { ...OWNER, writerInstallation: "3" };
-  const withWriter = handler({ ...fakes({ access }), owner, save: { save: async () => { throw new Error("no save"); } } });
-  assert.match((await get(withWriter, "/state", "me@example.org", "GET", "t")).text, /<form/);
-  down = true;
-  time += 2_000;
-  const { status, text } = await get(withWriter, "/state", "me@example.org", "GET", "t");
-  assert.equal(status, 200);
-  assert.doesNotMatch(text, /<form/);
-  assert.equal((await get(withWriter, "/state", "me@example.org", "POST", "t")).status, 503);
-  assert.equal((await get(handle, "/state", "other@example.org", "GET", "t")).status, 503);
-})();
+Given("the site asks Keycloak, which grants {string}", function (granted) {
+  this.site.access = keycloakAnswers(this, (url) => (url.endsWith("access-state") ? { status: 200, body: { hash: "h" } } : { status: 200, body: { access: granted.split(",") } }));
 });
 
-Then("with an email list the config needs no sign-in client", function () {
-  return (() => {
-  const env = { RELEASE_OWNER: "a", RELEASE_READER_APP_INSTALLATION_ID: "1", ALLOWED_EMAILS: " Me@x.org, ", RELEASE_READER_APP_ID: "9", RELEASE_READER_APP_KEY: "k", STORAGE_TOKEN_FILE: "f" };
-  const config = configFrom(env);
-  assert.deepEqual(config.allowedEmails, ["me@x.org"]);
-  assert.equal(config.clientId, undefined);
-  assert.throws(() => configFrom({ ...env, ALLOWED_EMAILS: "" }), /OIDC_CLIENT_ID is not set/);
-})();
+// Readiness, a read kept for a while, and the state history, each on stand-ins that fail
+// until the failure ends, and count their calls.
+Given("a readiness check that fails, saying {string}", function (problem) {
+  this.failing = true;
+  this.ready = readiness(async () => {
+    count(this, "the readiness check");
+    if (this.failing) throw new Error(problem);
+  }, () => this.time);
+});
+
+Given("the failure ends", function () {
+  this.failing = false;
+});
+
+Given("readiness was asked", async function () {
+  await this.ready();
+});
+
+When("readiness is asked", async function () {
+  await this.attempt(() => this.ready());
+});
+
+Given("a read, kept for a minute, that fails at first", function () {
+  this.failing = true;
+  // What it reads is how many reads there have been.
+  this.read = cached(async () => {
+    count(this, "the read");
+    if (this.failing) throw new Error("no");
+    return this.calls["the read"];
+  }, () => this.time);
+});
+
+Given("the read was asked for {string}", async function (key) {
+  await this.read(key).catch(() => null);
+});
+
+When("the read is asked for {string}", async function (key) {
+  await this.attempt(() => this.read(key));
+});
+
+Given("a state history whose reads of a state fail at first", function () {
+  this.failing = true;
+  this.history = stateHistory({
+    commits: async () => [{ sha: "c1", message: "m", author: "a", time: "t" }],
+    state: async () => {
+      count(this, "the state read");
+      if (this.failing) throw new Error("no");
+      return STATE;
+    },
+  });
+});
+
+Given("the state history was read", async function () {
+  await this.history(OWNER).catch(() => null);
+});
+
+When("the state history is read", async function () {
+  await this.attempt(() => this.history(OWNER));
+});
+
+Given("the state before:", function (doc) {
+  this.before = JSON.parse(doc);
+});
+
+Given("the state after:", function (doc) {
+  this.after = JSON.parse(doc);
+});
+
+When("the changes from one to the other are listed", async function () {
+  await this.attempt(() => changes(this.before, this.after));
+});
+
+When("the app {string} makes its token at {int} seconds past the epoch", async function (app, seconds) {
+  await this.attempt(() => appJwt(app, privateKey, seconds * 1000));
+});
+
+Then("the result is a JWT signed with the app's key, claiming:", function (doc) {
+  const [head, body, signature] = String(this.pubtest.result).split(".");
+  assert.deepEqual(JSON.parse(Buffer.from(body, "base64url")), JSON.parse(doc));
+  assert.ok(createVerify("RSA-SHA256").update(`${head}.${body}`).verify(createPublicKey(privateKey), signature, "base64url"), "the signature doesn't check");
+});
+
+// The reader app, with GitHub's API answered by a fake service.
+Given("the time is {string}", function (time) {
+  this.time = Date.parse(time);
+});
+
+Given("the reader app, asking the {string} service for GitHub", function (name) {
+  this.reader = reader({ appId: "1", appKey: privateKey }, { fetch: routed(this, name, "https://api.github.com"), now: () => this.time });
+});
+
+Given("the reader has read the state", async function () {
+  await this.reader.state(this.site.owner);
+});
+
+When("the reader reads the state", async function () {
+  await this.attempt(() => this.reader.state(this.site.owner));
+});
+
+When("the reader reads the state file", async function () {
+  await this.attempt(() => this.reader.stateFile(this.site.owner));
+});
+
+When("the reader reads the commits", async function () {
+  await this.attempt(() => this.reader.commits(this.site.owner));
+});
+
+When("the reader lists the repositories", async function () {
+  await this.attempt(() => this.reader.repositories(this.site.owner));
+});
+
+// The app's Caller, its records kept and its waits only noted, calling storage or
+// GitHub at the fake service of that name.
+function calling(world, name, from) {
+  world.sink = new MemorySink();
+  world.naps = [];
+  world.fetching = routed(world, name, from);
+  return new Caller(REPO, "web", { fetch: (url, init) => world.fetching(url, init), sink: world.sink, sleep: async (s) => world.naps.push(s), random: () => 1 });
+}
+
+Given("the board store, asking the {string} service for storage, with the token {string}", function (name, token) {
+  this.token = token;
+  this.store = boards({ storageUrl: "https://storage.test", storageTokenFile: "f" }, { caller: calling(this, name, "https://storage.test"), readFile: async () => `${this.token}\n` });
+});
+
+Given("the storage token becomes {string}", function (token) {
+  this.token = token;
+});
+
+Given("storage never answers in time", function () {
+  this.fetching = async (url, init) => {
+    count(this, "storage");
+    (this.signals.storage ??= []).push(init.signal);
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  };
+});
+
+Given("the board of {string} was read", async function (tenant) {
+  await this.store.latest({ tenant });
+});
+
+When("the board of {string} is read", async function (tenant) {
+  await this.attempt(() => this.store.latest({ tenant }));
+});
+
+When("the board's log of {string} is read", async function (tenant) {
+  await this.attempt(() => this.store.log({ tenant }));
+});
+
+Given("the call log of the sender {string}, sending to the {string} service with the token file {string}", function (sender, name, file) {
+  this.callSink = callLog({ storageUrl: "https://storage.test", storageTokenFile: file }, {
+    sender, start: false, fetch: routed(this, name, "https://storage.test"), readFile: async (path) => `token from ${path}\n`,
+  });
+  this.store = boards({ storageUrl: "https://storage.test", storageTokenFile: "f" }, {
+    caller: defaultCaller({ fetch: routed(this, name, "https://storage.test"), sink: this.callSink }), readFile: async () => "t",
+  });
+});
+
+When("the board of {string} is read, and the call log sent", async function (tenant) {
+  await this.attempt(async () => {
+    await this.store.latest({ tenant });
+    await this.callSink.flush();
+  });
+});
+
+When("the call log is made for the sender {string}", async function (sender) {
+  await this.attempt(() => callLog({ storageUrl: "https://storage.test", storageTokenFile: "/token" }, { sender, start: false }));
+});
+
+When("the app's caller is made", async function () {
+  await this.attempt(() => defaultCaller());
+});
+
+// The app's settings, as its environment gives them.
+Given("the settings:", function (table) {
+  this.settings = Object.fromEntries(table.raw());
+});
+
+Given("the setting {string} is empty", function (name) {
+  this.settings[name] = "";
+});
+
+Given("the setting {string} is {string}", function (name, value) {
+  this.settings[name] = value;
+});
+
+Given("the setting {string} is not set", function (name) {
+  delete this.settings[name];
+});
+
+When("the config is read", async function () {
+  await this.attempt(() => configFrom(this.settings));
+});
+
+Given("the last run read from the workflow {string}, asking the {string} service for GitHub", function (workflow, name) {
+  this.lastRun = lastRun(workflow, { caller: calling(this, name, "https://api.github.com") });
+});
+
+Given("GitHub doesn't answer, the connection failing", function () {
+  this.fetching = async () => { throw new TypeError("fetch failed"); };
+});
+
+Given("the last run read from the workflow {string} by a caller that doesn't know the operation", function (workflow) {
+  this.lastRun = lastRun(workflow, { caller: { call: async () => { throw new RangeError("not registered"); } } });
+});
+
+When("the last run is read", async function () {
+  await this.attempt(() => this.lastRun());
+});
+
+Then("the caller waited {string} seconds between its tries", function (waits) {
+  assert.equal(this.naps.join(", "), waits);
 });

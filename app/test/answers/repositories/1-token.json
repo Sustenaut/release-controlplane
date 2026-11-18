@@ -1,0 +1,1 @@
+{"service":"github","method":"POST","path":"/app/installations/11/access_tokens","status":201,"body":{"token":"t","expires_at":"2030-01-01T00:00:00Z"}}

@@ -17,6 +17,7 @@
     "pubpr": "github:Sustenaut/pubpr#v0.1.1"
   },
   "devDependencies": {
-    "@cucumber/cucumber": "13.3.0"
+    "@cucumber/cucumber": "13.3.0",
+    "@sustenaut/pubtest": "github:Sustenaut/pubtest#v0.2.1"
   }
 }

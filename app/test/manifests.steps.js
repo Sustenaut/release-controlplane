@@ -3,8 +3,12 @@
 import { Before, Then } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
-const installed = spawnSync("kustomize", ["version"]).status === 0;
+// kustomize by its full path, found once on PATH: what runs is named, not looked up again.
+const kustomize = (process.env.PATH ?? "").split(delimiter).map((dir) => join(dir, "kustomize")).find((p) => existsSync(p));
+const installed = kustomize !== undefined && spawnSync(kustomize, ["version"]).status === 0;
 
 Before("@manifests", function () {
   return installed ? undefined : "skipped";

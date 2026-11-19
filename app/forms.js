@@ -7,6 +7,8 @@ const NOTE_CHARS = 200;
 // What a repository's dropdown says to take the form's new label instead.
 export const NEW_LABEL = "__new__";
 
+const ROLES = ["board", "protect", "govern"];
+
 export class FormError extends Error {}
 
 export function noteFrom(form) {
@@ -36,17 +38,18 @@ export function labelsOf(state) {
   return [...new Set(used)].sort((a, b) => a.localeCompare(b));
 }
 
+// The state the form asks for. Only a repository whose project or roles the form
+// changes is written again, keeping its other keys (deploy, variables); every other
+// repository, and every key beside repos, stays as it is, in the state's order, and a
+// repository joining the state goes at the end.
 export function stateFrom(form, current, visible) {
   const known = new Set([...Object.keys(current.repos), ...visible]);
   const named = form.getAll("repo");
-  const repos = {};
+  const changed = {};
   const labels = new Set(labelsOf(current));
   const newLabel = (form.get("new-label") ?? "").trim();
   if (newLabel && !PROJECT.test(newLabel)) throw new FormError("A label is lower case letters, digits and hyphens, at most 40.");
   let usedNew = false;
-  for (const name of Object.keys(current.repos)) {
-    if (!named.includes(name)) repos[name] = current.repos[name];
-  }
   for (const name of named) {
     if (!NAME.test(name) || !known.has(name)) throw new FormError(`${name} isn't a repository the app can see.`);
     const roles = {
@@ -62,11 +65,22 @@ export function stateFrom(form, current, visible) {
     } else if (project && !labels.has(project)) {
       throw new FormError(`${project} isn't one of the labels.`);
     }
-    // A repository not yet in the state joins it when a role is switched on.
-    if (current.repos[name] || roles.board || roles.protect || roles.govern) {
-      repos[name] = project ? { project, ...roles } : roles;
+    const was = Object.hasOwn(current.repos, name) ? current.repos[name] : undefined;
+    if (was) {
+      const same = (was.project ?? "") === project && ROLES.every((role) => Boolean(was[role]) === roles[role]);
+      if (same) continue;
+      // Its keys keep their order, so only the values that change move in the diff.
+      const entry = { ...was, project, ...roles };
+      if (!project) delete entry.project;
+      changed[name] = entry;
+    } else if (roles.board || roles.protect || roles.govern) {
+      // A repository not yet in the state joins it when a role is switched on.
+      changed[name] = project ? { project, ...roles } : roles;
     }
   }
   if (newLabel && !usedNew) throw new FormError(`No repository was set to the new label ${newLabel}, so it wouldn't be kept.`);
-  return { owner: current.owner, repos };
+  const repos = {};
+  for (const [name, entry] of Object.entries(current.repos)) repos[name] = changed[name] ?? entry;
+  for (const [name, entry] of Object.entries(changed)) if (!Object.hasOwn(repos, name)) repos[name] = entry;
+  return { ...current, repos };
 }

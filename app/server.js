@@ -16,7 +16,7 @@ import { reader } from "./github.js";
 import { boards } from "./storage.js";
 import { lastRun } from "./runs.js";
 import { callLog, caller } from "./calls.js";
-import { writer } from "./writer.js";
+import { stateText, writer } from "./writer.js";
 import { FormError, noteFrom, protectOn, shaFrom, stateFrom } from "./forms.js";
 import { changes } from "./history.js";
 import { boardPage, historyPage, refusedPage, resultPage, statePage } from "./render.js";
@@ -129,7 +129,10 @@ export function handler({ owner, access, github, storage, save, boardRun, ready 
     const sha = shaFrom(form);
     state.forget();
     const current = await state();
-    const answer = await save.save(owner, { state: await makeState(form, current), sha, note, who });
+    const wanted = await makeState(form, current);
+    // A form that changes nothing opens no pull request.
+    if (stateText(wanted) === stateText(current.state)) return { status: "nothing to change" };
+    const answer = await save.save(owner, { state: wanted, sha, note, who });
     state.forget();
     stateCommits.forget();
     return answer;

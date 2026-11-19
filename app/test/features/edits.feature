@@ -37,6 +37,82 @@ Feature: An operator changing the state, with the pull request written to memory
     When I GET "/state"
     Then the answer does not include "<form"
 
+  Scenario: A save rewrites only the repository whose role changed, keeping its other keys
+    Given the state on main is:
+      """
+      {"owner": "example-org", "repos": {
+        "good": {"project": "tools", "board": true, "protect": true, "govern": false, "deploy": true,
+                 "variables": {"ROUTES": {"default": "here"}}},
+        "bad": {"board": true, "protect": true, "govern": false, "deploy": true}}}
+      """
+    And the "writer" service answers "POST /save" with 200 and:
+      """
+      {"status": "opened", "url": "https://github.com/x/pull/1", "autoMerge": "on"}
+      """
+    When I POST to "/state" with the form:
+      | base          | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+      | note          | Govern bad |
+      | repo          | good |
+      | good.board    | on |
+      | good.protect  | on |
+      | good.project  | tools |
+      | repo          | bad |
+      | bad.board     | on |
+      | bad.protect   | on |
+      | bad.govern    | on |
+      | repo          | unlisted |
+    Then the answer is 200
+    And the "writer" service was sent:
+      """
+      {"owner": "example-org", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "note": "Govern bad", "who": "op@x.org",
+       "state": {"owner": "example-org", "repos": {
+         "good": {"project": "tools", "board": true, "protect": true, "govern": false, "deploy": true,
+                  "variables": {"ROUTES": {"default": "here"}}},
+         "bad": {"board": true, "protect": true, "govern": true, "deploy": true}}}}
+      """
+
+  Scenario: A changed repository keeps the order of its keys
+    Given the state on main is:
+      """
+      {"owner": "example-org", "repos": {
+        "good": {"board": true, "deploy": true, "protect": true, "project": "tools", "govern": false},
+        "bad": {"board": true, "protect": true, "govern": false}}}
+      """
+    When the state on main is made from the form, and the keys of "good" are listed:
+      | repo          | good  |
+      | good.board    | on    |
+      | good.govern   | on    |
+      | good.project  | tools |
+    Then the result is:
+      """
+      ["board", "deploy", "protect", "project", "govern"]
+      """
+
+  Scenario: A repository joining the state goes after the ones already in it
+    When the state is made from the form, with "good,bad,unlisted" visible, and its repositories are listed:
+      | repo            | unlisted |
+      | unlisted.board  | on       |
+    Then the result is:
+      """
+      ["good", "bad", "unlisted"]
+      """
+
+  Scenario: A save that changes nothing opens no pull request
+    When I POST to "/state" with the form:
+      | base          | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
+      | note          | Nothing |
+      | repo          | good |
+      | good.board    | on |
+      | good.protect  | on |
+      | good.project  | tools |
+      | repo          | bad |
+      | bad.board     | on |
+      | bad.protect   | on |
+      | repo          | unlisted |
+    Then the answer is 200
+    And the answer includes "Nothing to change"
+    And the "writer" service was asked nothing
+
   Scenario: A save opens a pull request with the new state, the note and who asked
     Given the "writer" service answers "POST /save" with 200 and:
       """
@@ -442,10 +518,10 @@ Feature: An operator changing the state, with the pull request written to memory
     When the note is read from the form
     Then the result is "a b"
 
-  Scenario: The file is stable: sorted, indented, ending in a newline
+  Scenario: The file keeps the state's order and every key, indented, ending in a newline
     Given the state:
       """
-      {"owner": "o", "repos": {"b": {"board": true}, "a": {"board": false}}}
+      {"owner": "o", "repos": {"b": {"board": true, "deploy": true}, "a": {"board": false}}, "note": "kept"}
       """
     When the state's file is written
     Then the result is:
@@ -453,13 +529,15 @@ Feature: An operator changing the state, with the pull request written to memory
       {
         "owner": "o",
         "repos": {
+          "b": {
+            "board": true,
+            "deploy": true
+          },
           "a": {
             "board": false
-          },
-          "b": {
-            "board": true
           }
-        }
+        },
+        "note": "kept"
       }
 
       """
@@ -487,7 +565,7 @@ Feature: An operator changing the state, with the pull request written to memory
     And the proposal's "autoMerge" is "true"
     And the proposal's "changes" is:
       """
-      {"state.json": "{\n  \"owner\": \"example-org\",\n  \"repos\": {\n    \"bad\": {\n      \"board\": true,\n      \"protect\": true,\n      \"govern\": false\n    },\n    \"good\": {\n      \"board\": true,\n      \"protect\": true,\n      \"govern\": false,\n      \"project\": \"tools\"\n    }\n  }\n}\n"}
+      {"state.json": "{\n  \"owner\": \"example-org\",\n  \"repos\": {\n    \"good\": {\n      \"board\": true,\n      \"protect\": true,\n      \"govern\": false,\n      \"project\": \"tools\"\n    },\n    \"bad\": {\n      \"board\": true,\n      \"protect\": true,\n      \"govern\": false\n    }\n  }\n}\n"}
       """
     And the proposal's "token" is "w"
     And the "github" service was asked "POST /app/installations/33/access_tokens"

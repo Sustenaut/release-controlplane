@@ -77,6 +77,15 @@ Given("the board shows bad's secret scanning settings as not available", functio
     { text: "Secret scanning settings: not available", delta: 0, facts: ["secret_protection"] }] } } }] });
 });
 
+Given("the state on main is:", function (doc) {
+  this.state = JSON.parse(doc);
+});
+
+When("the state is made from the form, with {string} visible, and its repositories are listed:", async function (visible, table) {
+  const form = new URLSearchParams(table.raw());
+  await this.attempt(() => Object.keys(stateFrom(form, STATE, visible.split(",")).repos));
+});
+
 Given("the state protects good, but not bad", function () {
   this.state = { owner: "example-org", repos: { good: roles({ project: "tools" }), bad: roles({ protect: false }) } };
 });

@@ -8,8 +8,7 @@ import { installationTokens } from "./github.js";
 const STATE_FILE = "state.json";
 
 export function stateText(state) {
-  const repos = Object.fromEntries(Object.entries(state.repos).sort(([a], [b]) => a.localeCompare(b)));
-  return `${JSON.stringify({ owner: state.owner, repos }, null, 2)}\n`;
+  return `${JSON.stringify(state, null, 2)}\n`;
 }
 
 export function writer({ writerId, writerKey }, { propose = realPropose, fetch, now = Date.now } = {}) {

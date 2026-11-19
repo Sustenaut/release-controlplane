@@ -69,8 +69,10 @@ export function stateFrom(form, current, visible) {
     if (was) {
       const same = (was.project ?? "") === project && ROLES.every((role) => Boolean(was[role]) === roles[role]);
       if (same) continue;
-      const { project: _old, ...kept } = was;
-      changed[name] = { ...(project ? { project } : {}), ...kept, ...roles };
+      // Its keys keep their order, so only the values that change move in the diff.
+      const entry = { ...was, project, ...roles };
+      if (!project) delete entry.project;
+      changed[name] = entry;
     } else if (roles.board || roles.protect || roles.govern) {
       // A repository not yet in the state joins it when a role is switched on.
       changed[name] = project ? { project, ...roles } : roles;

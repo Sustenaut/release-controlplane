@@ -71,6 +71,23 @@ Feature: An operator changing the state, with the pull request written to memory
          "bad": {"board": true, "protect": true, "govern": true, "deploy": true}}}}
       """
 
+  Scenario: A changed repository keeps the order of its keys
+    Given the state on main is:
+      """
+      {"owner": "example-org", "repos": {
+        "good": {"board": true, "deploy": true, "protect": true, "project": "tools", "govern": false},
+        "bad": {"board": true, "protect": true, "govern": false}}}
+      """
+    When the state on main is made from the form, and the keys of "good" are listed:
+      | repo          | good  |
+      | good.board    | on    |
+      | good.govern   | on    |
+      | good.project  | tools |
+    Then the result is:
+      """
+      ["board", "deploy", "protect", "project", "govern"]
+      """
+
   Scenario: A repository joining the state goes after the ones already in it
     When the state is made from the form, with "good,bad,unlisted" visible, and its repositories are listed:
       | repo            | unlisted |

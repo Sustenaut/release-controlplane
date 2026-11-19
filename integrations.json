@@ -12,6 +12,7 @@
       "paths": [
         ".github/workflows/fleet-nightly.yml",
         ".github/workflows/hourly-board.yml",
+        ".github/workflows/service-needs.yml",
         "bin/pubrules-facts"
       ],
       "mode": "required"

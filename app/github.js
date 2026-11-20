@@ -1,9 +1,12 @@
 // Reading the state repositories as the reader app, through pubpr's request
 // function. Each owner has its own installation, so each gets its own token, which
 // asks for Contents read and nothing else, kept until shortly before it expires.
+// Each request is a call of the app's Caller (calls.js): a read is
+// github.board-read's read, a token github.app-token's mint-in-app.
 
 import { createSign } from "node:crypto";
 import { github } from "pubpr";
+import { caller as defaultCaller } from "./calls.js";
 
 const STATE_FILE = "state.json";
 const b64url = (value) => Buffer.from(value).toString("base64url");
@@ -17,9 +20,10 @@ export function appJwt(appId, key, now = Date.now()) {
 }
 
 // A function from an owner to a token for its installation, each kept until shortly
-// before it expires.
-export function installationTokens({ appId, appKey, installationOf, permissions, fetch, now = Date.now }) {
+// before it expires, each minted as the Caller's github.app-token mint-in-app.
+export function installationTokens({ appId, appKey, installationOf, permissions, caller, now = Date.now }) {
   const tokens = new Map();
+  const fetch = caller.fetch("github.app-token", "mint-in-app");
   return async (owner) => {
     const held = tokens.get(owner.name);
     if (held && held.expires - now() > 60_000) return held.token;
@@ -33,10 +37,11 @@ export function installationTokens({ appId, appKey, installationOf, permissions,
   };
 }
 
-export function reader({ appId, appKey }, { fetch, now = Date.now } = {}) {
+export function reader({ appId, appKey }, { caller = defaultCaller(), now = Date.now } = {}) {
   const tokenFor = installationTokens({
-    appId, appKey, fetch, now, installationOf: (owner) => owner.installation, permissions: { contents: "read" },
+    appId, appKey, caller, now, installationOf: (owner) => owner.installation, permissions: { contents: "read" },
   });
+  const fetch = caller.fetch("github.board-read", "read");
   const forOwner = (owner) => github({ token: () => tokenFor(owner), fetch });
   const at = (owner) => `/repos/${owner.name}/release-state`;
 

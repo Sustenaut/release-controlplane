@@ -1,6 +1,6 @@
 // Every call this app makes itself, to storage or to GitHub, goes through one Caller
 // (integrations' caller.js): the operation's class sets its timeout and retries, and each
-// call leaves a record. pubpr makes its own calls and isn't routed here.
+// call leaves a record. pubpr's requests come here too, through caller.fetch.
 //
 // The records go to the call log: an Avro file every two minutes, even an idle one, in
 // the storage buffer calls-release-controlplane, which both owners' deployments write

@@ -215,7 +215,6 @@ export function handler({ owner, access, github, storage, save, boardRun, ready 
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const config = configFrom(process.env);
-  const save = config.writerId && config.writerKey ? writer(config) : null;
   const access = config.allowedEmails.length
     ? emailAccess(config.allowedEmails, [READER, OPERATOR])
     : accessCheck({ realmUrl: config.realmUrl, clientId: config.clientId, clientSecret: config.clientSecret, role: READER });
@@ -223,7 +222,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     if (!(await readFile(config.storageTokenFile, "utf8")).trim()) throw new Error(`${config.storageTokenFile} is empty`);
   });
   const calls = caller({ sink: callLog(config) });
-  const handle = handler({ owner: config.owner, access, github: reader(config), storage: boards(config, { caller: calls }), save, ready, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow, { caller: calls }) : undefined });
+  const save = config.writerId && config.writerKey ? writer(config, { caller: calls }) : null;
+  const handle = handler({ owner: config.owner, access, github: reader(config, { caller: calls }), storage: boards(config, { caller: calls }), save, ready, boardRun: config.boardWorkflow ? lastRun(config.boardWorkflow, { caller: calls }) : undefined });
   createServer((request, response) => {
     handle(request, response).catch((error) => {
       console.error(error);

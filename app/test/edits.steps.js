@@ -8,7 +8,7 @@ import { same } from "@sustenaut/pubtest";
 import { labelsOf, noteFrom, shaFrom, stateFrom } from "../forms.js";
 import { stateText, writer } from "../writer.js";
 import { fakeAccess } from "./fake-access.js";
-import { routed, send } from "./features/support.js";
+import { calling, send } from "./features/support.js";
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -164,7 +164,7 @@ Given("the state writer app, asking the {string} service for its token", functio
     this.proposals.push({ ...o, token: await o.token() });
     return publisher.propose(o);
   };
-  this.writer = writer({ writerId: "9", writerKey: privateKey }, { propose, fetch: routed(this, name, "https://api.github.com"), now: () => this.time });
+  this.writer = writer({ writerId: "9", writerKey: privateKey }, { propose, caller: calling(this, name, "https://api.github.com"), now: () => this.time });
 });
 
 When("the writer saves the state, noting {string}, for {string}", async function (note, who) {

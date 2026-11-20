@@ -5,6 +5,8 @@ import { Given, Then, setDefaultTimeout } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { Answer, register, same } from "@sustenaut/pubtest";
+import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
+import { REPO } from "../../calls.js";
 import { handler } from "../../server.js";
 
 setDefaultTimeout(60_000);
@@ -52,6 +54,15 @@ export function routed(world, name, from) {
     assert.ok(to, `there is no fake ${name} service`);
     return fetch(String(url).replace(from, to), init);
   };
+}
+
+// The app's Caller, its records kept and its waits only noted, calling storage or
+// GitHub at the fake service of that name.
+export function calling(world, name, from) {
+  world.sink = new MemorySink();
+  world.naps = [];
+  world.fetching = routed(world, name, from);
+  return new Caller(REPO, "web", { fetch: (url, init) => world.fetching(url, init), sink: world.sink, sleep: async (s) => world.naps.push(s), random: () => 1 });
 }
 
 Given("my access token is {string}", function (token) {

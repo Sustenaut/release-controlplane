@@ -3,17 +3,16 @@
 import { Given, Then, When } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
 import { createPublicKey, createVerify, generateKeyPairSync } from "node:crypto";
-import { Caller, MemorySink } from "@sustenaut/integrations/caller.js";
 import { cached, readiness, stateHistory } from "../server.js";
 import { appJwt, reader } from "../github.js";
 import { boards } from "../storage.js";
 import { lastRun } from "../runs.js";
-import { REPO, callLog, caller as defaultCaller } from "../calls.js";
+import { callLog, caller as defaultCaller } from "../calls.js";
 import { changes } from "../history.js";
 import { configFrom } from "../config.js";
 import { accessCheck } from "../access.js";
 import { fakeAccess } from "./fake-access.js";
-import { count, routed } from "./features/support.js";
+import { calling, count, routed } from "./features/support.js";
 
 const { privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" },
@@ -202,7 +201,7 @@ Given("the time is {string}", function (time) {
 });
 
 Given("the reader app, asking the {string} service for GitHub", function (name) {
-  this.reader = reader({ appId: "1", appKey: privateKey }, { fetch: routed(this, name, "https://api.github.com"), now: () => this.time });
+  this.reader = reader({ appId: "1", appKey: privateKey }, { caller: calling(this, name, "https://api.github.com"), now: () => this.time });
 });
 
 Given("the reader has read the state", async function () {
@@ -224,15 +223,6 @@ When("the reader reads the commits", async function () {
 When("the reader lists the repositories", async function () {
   await this.attempt(() => this.reader.repositories(this.site.owner));
 });
-
-// The app's Caller, its records kept and its waits only noted, calling storage or
-// GitHub at the fake service of that name.
-function calling(world, name, from) {
-  world.sink = new MemorySink();
-  world.naps = [];
-  world.fetching = routed(world, name, from);
-  return new Caller(REPO, "web", { fetch: (url, init) => world.fetching(url, init), sink: world.sink, sleep: async (s) => world.naps.push(s), random: () => 1 });
-}
 
 Given("the board store, asking the {string} service for storage, with the token {string}", function (name, token) {
   this.token = token;

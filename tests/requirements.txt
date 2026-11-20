@@ -1,5 +1,7 @@
 # The functional suite's direct dependencies. Exact pins only; the resolved
 # set with hashes lives in requirements.lock. Regenerate it with `pubrules lock`.
+# The steps and plugin the suite runs with; the nightly moves the pin.
+pubtest @ https://github.com/Sustenaut/pubtest/releases/download/v0.3.0/pubtest-0.3.0-py3-none-any.whl
 -r requirements-pubrules.txt
 pubfleet @ https://github.com/Sustenaut/pubfleet/releases/download/v0.2.0/pubfleet-0.2.0-py3-none-any.whl
 fastavro==1.13.1

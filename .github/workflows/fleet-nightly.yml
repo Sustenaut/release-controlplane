@@ -24,7 +24,7 @@ jobs:
         with: { python-version: '3.14' }
       - run: python -m pip install --quiet --only-binary ':all:' --require-hashes -r tests/requirements.lock
       - id: sustenaut
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: '${{ vars.RELEASE_READER_APP_ID }}'
           private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
@@ -45,7 +45,7 @@ jobs:
   sustenaut:
     needs: plan
     if: needs.plan.outputs.Sustenaut != '{"repositories":[]}'
-    uses: Sustenaut/pubfleet/.github/workflows/nightly.yml@80f051890749283c9f5bfc33f328e013be26c05e # v0.1.0
+    uses: Sustenaut/pubfleet/.github/workflows/nightly.yml@ad651210b6a30d57fe2c060c2d531444c18239d0 # v0.2.2
     with: { repos: '${{ needs.plan.outputs.Sustenaut }}' }
     secrets:
       app-id: '${{ vars.NIGHTLY_APP_ID }}'
@@ -69,7 +69,7 @@ jobs:
         with: { python-version: '3.14' }
       - run: python -m pip install --quiet --only-binary ':all:' --require-hashes -r tests/requirements.lock
       - id: sustenaut
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: '${{ vars.RELEASE_READER_APP_ID }}'
           private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
@@ -115,7 +115,7 @@ jobs:
         with: { python-version: '3.14' }
       - run: python -m pip install --quiet --only-binary ':all:' --require-hashes -r tests/requirements.lock
       - id: sustenaut
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: '${{ vars.RELEASE_READER_APP_ID }}'
           private-key: '${{ secrets.RELEASE_READER_APP_KEY }}'
